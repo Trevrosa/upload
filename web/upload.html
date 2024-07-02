@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <title>upload</title>
+        <meta name="description" content="upload">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+    </head>
+    <body>
+        <label for="token">Password: </label>
+        <input id="token" name="token" type="text" />
+        <label for="file">Files: </label>
+        <input id="file" name="file" type="file" multiple="true" />
+        <button id="submit">Upload</button>
+        
+        <div id="statuses" style="font-style: italic;">
+            <p id="defaultStatus" style="white-space: pre;">click upload to upload</p>
+        </div>
+        
+        <script src="upload.js" async defer></script>
+    </body>
+</html>

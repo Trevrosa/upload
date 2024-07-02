@@ -1,0 +1,8 @@
+[default]
+port = 3123
+# log_level = "debug"
+
+[default.limits]
+form = "100 mb"
+file = "100 mb"
+data-form = "100 mb"
