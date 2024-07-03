@@ -21,13 +21,15 @@ combine the files uploaded with `<id>` to a file named `<name>`
 - `<id>` must be a string.
 - `<name>` must be a string.
 
-## example usage (in JS)
+## example usage (in javascript)
 upload a file
 ```js
 let auth = new Headers();
 auth.set("token", token);
-
 let form = new FormData();
 form.set("file", file); // file being an instance of File
-let resp = await fetch("/", { method: "PUT", headers: auth, body: form }
+
+let resp = await fetch("/", {
+  method: "PUT", headers: auth, body: form
+});
 ```
