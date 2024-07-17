@@ -10,8 +10,13 @@
     <body>
         <label for="token">Password: </label>
         <input id="token" name="token" type="text" />
+        
         <label for="file">Files: </label>
         <input id="file" name="file" type="file" multiple="true" />
+        
+        <label for="name" class="name" hidden="true">Name: </label>
+        <input type="text" class="name" id="name" hidden="true" />
+        
         <button id="submit">Upload</button>
         
         <div id="statuses" style="font-style: italic;">

@@ -11,11 +11,19 @@ const defaultLogger = document.getElementById("defaultStatus");
 var uploading = false;
 
 /**
- * @param {File} file 
+ * @param {File} _file 
  * @param {Headers} auth 
  * @param {HTMLParagraphElement} logger
+ * @param {String?} _name
  */
-async function upload(file, auth, logger) {
+async function upload(_file, auth, logger, _name = null) {
+    let name = _file.name;
+    if (_name !== null) {
+        name = _name;
+    }
+
+    let file = new File([_file], name, { type: _file.type });
+
     // if file size >90 MB, split up requests
     if (file.size > 90_000_000) {
         let id = self.crypto.randomUUID();
@@ -28,7 +36,7 @@ async function upload(file, auth, logger) {
             let form = new FormData();
             form.set("file", chunk);
 
-            logger.innerText = `uploading "${file.name}" (big), wait`;
+            logger.innerText = `uploading "${_file.name}" as "${file.name}" (big), wait`;
             await fetch(`/upload/upload/multi/${id}/${num}`, {
                 method: "PUT",
                 headers: auth,
@@ -58,18 +66,18 @@ async function upload(file, auth, logger) {
                 } else {
                     let response = await resp.text();
                     uploading = false;
-                    logger.innerHTML += `\n\n<div style="color: #cc0000;">${response}</div>`;
+                    logger.innerHTML += `\n\n<div style="color: #cc0000;">${response} (request error)</div>`;
                 }
             }).catch((err) => {
                 uploading = false;
-                logger.innerHTML += `\n\n<div style="color: #cc0000;">${err}</div>`;
+                logger.innerHTML += `\n\n<div style="color: #cc0000;">${err} (fetch error)</div>`;
             });
         }
     } else {
         let form = new FormData();
         form.set("file", file);
 
-        logger.innerText = `uploading "${file.name}", wait`;
+        logger.innerText = `uploading "${_file.name}" as "${file.name}", wait`;
         fetch("/upload/upload/", {
             method: "PUT",
             headers: auth,
@@ -92,6 +100,27 @@ async function upload(file, auth, logger) {
             uploading = false;
             logger.innerHTML += `\n\n<div style="color: #cc0000;">${err}</div>`;
         });
+    }
+}
+
+document.getElementById("file").onchange = () => {
+    /**
+     * @type {File[]}
+     */
+    let files = document.getElementById("file").files;
+    let names = document.getElementsByClassName("name");
+    
+    if (files.length == 1) {
+        for (const name of names) {
+            name.hidden = false;
+            if (name.id == "name") {
+                name.value = files[0].name;
+            }
+        }
+    } else {
+        for (const name of names) {
+            name.hidden = true;
+        }
     }
 }
 
@@ -134,8 +163,8 @@ button.addEventListener("click", async () => {
 
     uploading = true;
 
-    if (files.length == 0) {
-        await upload(files[0], auth, defaultLogger);
+    if (files.length == 1) {
+        await upload(files[0], auth, defaultLogger, document.getElementById("name").value);
     } else {
         let first = true;
 

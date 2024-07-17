@@ -4,7 +4,7 @@ mod authorized;
 mod form_size_limit;
 mod upload;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use rocket::{
     catch, catchers,
     form::{Errors, Form},
@@ -17,13 +17,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-lazy_static! {
-    static ref UPLOAD_DIR: PathBuf = {
-        Path::new("/home/trev/uploads")
-            .canonicalize()
-            .expect("upload dir not found")
-    };
-}
+static UPLOAD_DIR: Lazy<PathBuf> = Lazy::new(|| {
+    Path::new(include_str!("../upload_path"))
+        .canonicalize()
+        .expect("upload dir not found")
+});
 const TOKEN: &str = include_str!("../token");
 
 /// represents a fallible [`Form`] data guard for [`TempFile`].
