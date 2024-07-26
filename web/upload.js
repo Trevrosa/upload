@@ -109,7 +109,7 @@ function upload(_file, token, logger, _name = null) {
                     doneProcessing = true;
 
                     if (request.status == 201) {
-                        if (collapsed) { toggleCollapse(); }
+                        if (!collapsed) { toggleCollapse(); }
 
                         mainLogger.onclick = null;
                         mainLogger.style.cursor = null;
