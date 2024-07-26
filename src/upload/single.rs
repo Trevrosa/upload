@@ -56,10 +56,10 @@ async fn upload_single(
         );
     }
 
-    // humanized file size (eg. 1000 bytes => 1 kb)
+    // humanized file size (eg. 1000 bytes => 1 kilobytes)
     let file_size = format_size(file.len(), DECIMAL);
 
-    // i want copy_to instead of persist_to because i need to save files in a different device
+    // i want `copy_to` instead of `persist_to` because i need to save files in a different device
     let save_file = file.copy_to(path.clone()).await;
 
     if let Err(err) = save_file {

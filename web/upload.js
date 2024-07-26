@@ -1,3 +1,5 @@
+"use strict";
+
 /**
  * @type {HTMLButtonElement}
  */
@@ -12,94 +14,239 @@ var uploading = false;
 
 /**
  * @param {File} _file 
- * @param {Headers} auth 
- * @param {HTMLParagraphElement} logger
- * @param {String?} _name
+ * @param {string} token
+ * @param {HTMLDivElement} logger
+ * @param {string?} _name
  */
-async function upload(_file, auth, logger, _name = null) {
+function upload(_file, token, logger, _name = null) {
     let name = _file.name;
     if (_name !== null) {
         name = _name;
     }
 
-    let file = new File([_file], name, { type: _file.type });
+    const file = new File([_file], name, { type: _file.type });
 
-    // if file size >90 MB, split up requests
-    if (file.size > 90_000_000) {
-        let id = self.crypto.randomUUID();
+    const maxSize = 5_000_000;
+
+    // if file size >5 MB, split up requests
+    if (file.size > maxSize) {
+        // can use because .dev websites require HSTS (https always)
+        const id = window.crypto.randomUUID();
+        const totalChunks = Math.ceil(file.size / maxSize);
+
         let num = 0;
 
-        for (let start = 0; start < file.size; start += 90_000_000) {
+        let erroredNum = 0;
+        let finishedNum = 0;
+
+        let collapsed = false;
+        let done = false;
+
+        const mainLogger = logger.getElementsByClassName("main")[0];
+        const oldStatus = _file.name == file.name ? `uploading "${file.name}"` : `uploading "${_file.name}" as "${file.name}"`;
+        
+        mainLogger.innerHTML = oldStatus;
+        mainLogger.title = "click me";
+        mainLogger.style.cursor = "pointer";
+        mainLogger.style.textDecoration = "underline";
+
+        function toggleCollapse(ev) {
+            if (ev.target.nodeName == "BUTTON") {
+                return;
+            }
+
+            for (var i = 0; i < mainLogger.parentNode.children.length; i++) {
+                const child = mainLogger.parentNode.children[i];
+                if (child.classList.contains("main")) {
+                    continue;
+                }
+                if (child.style.display == "block" | child.style.display == "") {
+                    child.style.display = "none";
+                } else {
+                    child.style.display = "block";
+                }
+            }
+            collapsed = !collapsed;
+
+            if (collapsed && !done) {
+                mainLogger.innerHTML += " (collapsed)";
+            } else {
+                mainLogger.innerHTML = mainLogger.innerHTML.replace(" (collapsed)", "");
+            }
+        };
+        
+        mainLogger.onclick = toggleCollapse;
+
+        setInterval(() => {
+            if (done) {
+                return;
+            }
+            const msg = collapsed ? " (collapsed)" : "";
+            mainLogger.innerHTML = `${oldStatus}: ${finishedNum}/${totalChunks} chunks done, ${erroredNum} chunks errored` + msg;
+        }, 500);
+
+        setInterval(() => {
+            if (finishedNum != totalChunks || done) {
+                return;
+            }
+
+            done = true;
+            uploading = false;
+
+            const msg = collapsed ? " (collapsed)" : "";
+            mainLogger.innerHTML = `${oldStatus}: almost done..` + msg;
+
+            function finish() {
+                const request = new XMLHttpRequest();
+
+                request.onload = () => {
+                    const response = request.response;
+                    mainLogger.style.textDecoration = null;
+
+                    if (request.status == 201) {
+                        if (collapsed) { toggleCollapse(); }
+
+                        mainLogger.onclick = null;
+                        mainLogger.style.cursor = null;
+                        mainLogger.innerHTML = `uploaded! see <a href="${response}">${response}</a>`;
+                    } else {
+                        mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">${response}</div>`;
+                        
+                        const button = document.createElement("button");
+                        button.style.marginLeft = "5px";
+                        button.innerText = "retry?";
+                        button.onclick = finish;
+
+                        mainLogger.appendChild(button);
+                    }
+                };
+
+                request.onerror = () => {
+                    mainLogger.style.textDecoration = null;
+                    mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">request error: ${request.status}</div>`;
+                    
+                    const button = document.createElement("button");
+                    button.style.marginLeft = "5px";
+                    button.innerText = "retry?";
+                    button.onclick = finish;
+
+                    mainLogger.appendChild(button);
+                };
+                
+                request.open("PUT", `/upload/upload/done/${id}/${file.name}/${num}`);
+                request.setRequestHeader("token", token);
+                request.send();
+            }
+
+            finish();
+        }, 500);
+        
+        for (let start = 0; start < file.size; start += maxSize) {
             num += 1;
             
-            let chunk = file.slice(start, start + 90_000_000);
-            let form = new FormData();
+            const chunk = file.slice(start, start + maxSize);
+            const form = new FormData();
             form.set("file", chunk);
-
-            logger.innerText = `uploading "${_file.name}" as "${file.name}" (big), wait`;
-            await fetch(`/upload/upload/multi/${id}/${num}`, {
-                method: "PUT",
-                headers: auth,
-                body: form
-            }).then(async (resp) => {
-                if (resp.status === 201) {
-                    logger.innerText += "..";
-                    if (chunk.size < 90_000_000) {
-                        logger.innerText += " almost done..";
-                        fetch(`/upload/upload/done/${id}/${file.name}`, {
-                            method: "PUT",
-                            headers: auth,
-                        }).then(async (resp) => {
-                            let response = await resp.text();
-                            uploading = false;
-
-                            if (resp.status === 201) {
-                                logger.innerHTML = `uploaded! see <a href="${response}">${response}</a>`
-                            } else {
-                                logger.innerHTML += `\n\n<div style="color: #cc0000;">${response}</div>`;
-                            }
-                        }).catch((err) => {
-                            uploading = false;
-                            logger.innerHTML += `\n\n<div style="color: #cc0000;">${err}</div>`;
-                        });
+            
+            const chunkLogger = document.createElement("p"); 
+            logger.appendChild(chunkLogger);
+            
+            function uploadChunk() {
+                chunkLogger.innerText = `chunk #${num} initializing..`;
+    
+                const request = new XMLHttpRequest();
+    
+                const cnum = num;
+                request.upload.onprogress = (ev) => {
+                    const percent = Math.round((ev.loaded / ev.total) * 100);
+                    chunkLogger.innerText = `chunk #${cnum}: ${ev.loaded} out of ${ev.total} bytes (${percent}%)`;
+                    
+                    if (ev.loaded == ev.total) {
+                        chunkLogger.innerText += `, wait..`;
                     }
-                } else {
-                    let response = await resp.text();
-                    uploading = false;
-                    logger.innerHTML += `\n\n<div style="color: #cc0000;">${response} (request error)</div>`;
-                }
-            }).catch((err) => {
-                uploading = false;
-                logger.innerHTML += `\n\n<div style="color: #cc0000;">${err} (fetch error)</div>`;
-            });
+                };
+    
+                request.onload = () => {
+                    if (request.status == 201) {
+                        finishedNum += 1;
+                        chunkLogger.innerText += " done!";
+                    } else {
+                        uploading = false;
+                        erroredNum += 1;
+    
+                        chunkLogger.innerHTML = `chunk #${cnum}: <div style="color: #cc0000; display: inline-block;">${request.response}</div>`;
+                        
+                        const button = document.createElement("button");
+                        button.innerText = "retry?";
+                        button.style.marginLeft = "5px";
+                        button.onclick = uploadChunk;
+
+                        chunkLogger.appendChild(button);
+                    }
+                };
+    
+                request.upload.onerror = () => {
+                    erroredNum += 1;
+                    chunkLogger.innerHTML = `chunk #${cnum}: <div style="color: #cc0000; display: inline-block;">request error ${request.status}</div>`;
+                    
+                    const button = document.createElement("button");
+                    button.innerText = "retry?";
+                    button.style.marginLeft = "5px";
+                    button.onclick = uploadChunk;
+
+                    chunkLogger.appendChild(button);
+                };
+    
+                request.open("PUT", `/upload/upload/multi/${id}/${num}`);
+                request.setRequestHeader("token", token);
+                request.send(form);
+            }
+
+            uploadChunk();
         }
     } else {
-        let form = new FormData();
+        const form = new FormData();
         form.set("file", file);
 
-        logger.innerText = `uploading "${_file.name}" as "${file.name}", wait`;
-        fetch("/upload/upload/", {
-            method: "PUT",
-            headers: auth,
-            body: form
-        }).then(async (resp) => {
-            let response = await resp.text();
-            uploading = false;
+        const defaultLogger = logger.firstChild;
+        
+        const oldStatus = _file.name == file.name ? `uploading "${file.name}"` : `uploading "${_file.name}" as "${file.name}"`;
+        defaultLogger.innerText = oldStatus;
 
-            if (resp.status === 201) {
-                logger.innerHTML = `uploaded! see <a href="${response}">${response}</a>`
-            }
-            else if (resp.status === 502) {
-                logger.innerText = "server offline; try again later";
-            } else if (resp.status === 520) {
-                logger.innerText = "server error; try again";
-            } else {
-                logger.innerHTML += `\n\n<div style="color: #cc0000;">${response}</div>`;
-            }
-        }).catch((err) => {
+        const request = new XMLHttpRequest();
+
+        request.onload = () => {
             uploading = false;
-            logger.innerHTML += `\n\n<div style="color: #cc0000;">${err}</div>`;
-        });
+            const response = request.response;
+
+            if (request.status == 201) {
+                defaultLogger.innerHTML = `uploaded! see <a href="${response}">${response}</a>`;
+            } else if (request.status == 502) {
+                defaultLogger.innerHTML = "server offline; try again later";
+            } else if (request.status == 520) {
+                defaultLogger.innerHTML = "server error; try again";
+            } else {
+                defaultLogger.innerHTML += `\n\n<div style="color: #cc0000;">${response}</div>`;
+            }
+        };
+
+        request.upload.onerror = () => {
+            uploading = false;
+            defaultLogger.innerHTML += `\n\n<div style="color: #cc0000;">request error ${request.status}</div>`;
+        };
+
+        request.upload.onprogress = (ev) => {
+            const percent = Math.round((ev.loaded / ev.total) * 100);
+            defaultLogger.innerHTML = `${oldStatus}: uploaded ${ev.loaded} out of ${ev.total} bytes (${percent}%)`;
+
+            if (ev.loaded == ev.total) {
+                defaultLogger.innerHTML += ", wait..";
+            }
+        };
+
+        request.open("PUT", "/upload/upload/");
+        request.setRequestHeader("token", token);
+        request.send(form);
     }
 }
 
@@ -107,8 +254,8 @@ document.getElementById("file").onchange = () => {
     /**
      * @type {File[]}
      */
-    let files = document.getElementById("file").files;
-    let names = document.getElementsByClassName("name");
+    const files = document.getElementById("file").files;
+    const names = document.getElementsByClassName("name");
     
     if (files.length == 1) {
         for (const name of names) {
@@ -122,9 +269,9 @@ document.getElementById("file").onchange = () => {
             name.hidden = true;
         }
     }
-}
+};
 
-button.addEventListener("click", async () => {
+button.onclick = () => {
     if (uploading) {
         return;
     }
@@ -132,27 +279,24 @@ button.addEventListener("click", async () => {
     /**
      * @type {File[]}
      */
-    let files = document.getElementById("file").files;
+    const files = document.getElementById("file").files;
 
     if (files.length == 0) {
-        defaultLogger.innerText = "u dont put file";
+        defaultLogger.firstChild.innerText = "u dont put file";
         return;
     }
 
     /**
      * @type {string}
      */
-    let token = document.getElementById("token").value;
+    const token = document.getElementById("token").value;
 
     if (token === "") {
-        defaultLogger.innerText = "u dont put password";
+        defaultLogger.firstChild.innerText = "u dont put password";
         return;
     }
 
-    let auth = new Headers();
-    auth.set("token", token);
-
-    let statuses = document.getElementById("statuses");
+    const statuses = document.getElementById("statuses");
 
     // clear statuses
     while (statuses.children.length != 1) {
@@ -160,26 +304,32 @@ button.addEventListener("click", async () => {
             statuses.lastChild.remove();
         }
     }
+    
+    defaultLogger.innerHTML = '<p class="main" style="white-space: pre; font-weight: bold;"></p>';
 
     uploading = true;
 
     if (files.length == 1) {
-        await upload(files[0], auth, defaultLogger, document.getElementById("name").value);
+        upload(files[0], token, defaultLogger, document.getElementById("name").value);
     } else {
         let first = true;
 
         for (const file of files) {
             if (first) {
                 first = false;
-                await upload(file, auth, defaultLogger);
+                upload(file, token, defaultLogger);
                 continue;
             }
 
-            let logger = document.createElement("p");
-            logger.style = "white-space: pre;";
-            statuses.appendChild(logger);
+            const logger = document.createElement("div");
+            const status = document.createElement("p");
+            status.style = "white-space: pre; font-weight: bold;";
+            status.className = "main";
 
-            await upload(file, auth, logger);
+            statuses.appendChild(logger);
+            logger.appendChild(status);
+
+            upload(file, token, logger);
         }
     }
-});
+};

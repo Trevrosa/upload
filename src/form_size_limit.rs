@@ -4,7 +4,7 @@ use rocket::{
     Request,
 };
 
-pub const LIMIT: u64 = 100_000_000;
+pub const LIMIT: u64 = 15_000_000;
 
 /// request guard checking the `content-length` header
 pub struct FormSizeLimit(());

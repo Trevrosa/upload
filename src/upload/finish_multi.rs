@@ -14,19 +14,31 @@ use crate::authorized::Authorized;
 use crate::{Response, UPLOAD_DIR};
 
 // merges separated files into `name`
-#[put("/done/<id>/<name>")]
+#[put("/done/<id>/<name>/<total>")]
 async fn finish_multi(
     _token: Authorized, // check if request is authorized
     id: &'_ str,
     name: &'_ str,
+    total: usize,
 ) -> Response {
     let matcher = temp_dir().join(format!("{id}*"));
 
     let files = spawn_blocking(move || glob(matcher.to_str().unwrap()).unwrap());
+    // ok not to sort because glob already sorts alphabetically
     let files: Vec<Result<PathBuf, _>> = files.await.unwrap().collect();
 
     if files.is_empty() {
         return (Status::NotFound, Cow::Borrowed("file not found from id"));
+    }
+
+    if files.len() != total {
+        return (
+            Status::BadRequest,
+            Cow::Owned(format!(
+                "{}/{total} uploads received, upload the missing chunks and retry",
+                files.len()
+            )),
+        );
     }
 
     let final_path = UPLOAD_DIR.join(name);

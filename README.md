@@ -1,4 +1,4 @@
-# upload service written with Rocket
+# upload service
 
 ## api reference
 
@@ -15,11 +15,12 @@ the body should be specified the same as in the normal upload.
 - `<id>` specifies the unique id for and must be a string.
 - `<num>` specifies the request's order and must be a number. 
 
-### PUT `/done/<id>/<name>`
-combine the files uploaded with `<id>` to a file named `<name>`
+### PUT `/done/<id>/<name>/<total>`
+combine the files uploaded with `<id>` to the final file named `<name>`
 
 - `<id>` must be a string.
 - `<name>` must be a string.
+- `<total>` is the expected total chunks to be combined and must be a number.
 
 ## example usage (in javascript)
 upload a file
