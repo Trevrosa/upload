@@ -41,6 +41,7 @@ function upload(_file, token, logger, _name = null) {
 
         let collapsed = false;
         let done = false;
+        let doneProcessing = false;
 
         const mainLogger = logger.getElementsByClassName("main")[0];
         const oldStatus = _file.name == file.name ? `uploading "${file.name}"` : `uploading "${_file.name}" as "${file.name}"`;
@@ -50,11 +51,7 @@ function upload(_file, token, logger, _name = null) {
         mainLogger.style.cursor = "pointer";
         mainLogger.style.textDecoration = "underline";
 
-        function toggleCollapse(ev) {
-            if (ev.target.nodeName == "BUTTON") {
-                return;
-            }
-
+        function toggleCollapse() {
             for (var i = 0; i < mainLogger.parentNode.children.length; i++) {
                 const child = mainLogger.parentNode.children[i];
                 if (child.classList.contains("main")) {
@@ -68,14 +65,20 @@ function upload(_file, token, logger, _name = null) {
             }
             collapsed = !collapsed;
 
-            if (collapsed && !done) {
+            if (collapsed && !doneProcessing) {
                 mainLogger.innerHTML += " (collapsed)";
             } else {
                 mainLogger.innerHTML = mainLogger.innerHTML.replace(" (collapsed)", "");
             }
         };
         
-        mainLogger.onclick = toggleCollapse;
+        mainLogger.onclick = (ev) => {
+            if (ev.target.nodeName == "BUTTON") {
+                return;
+            }
+
+            toggleCollapse();
+        };
 
         setInterval(() => {
             if (done) {
@@ -102,6 +105,8 @@ function upload(_file, token, logger, _name = null) {
                 request.onload = () => {
                     const response = request.response;
                     mainLogger.style.textDecoration = null;
+
+                    doneProcessing = true;
 
                     if (request.status == 201) {
                         if (collapsed) { toggleCollapse(); }
