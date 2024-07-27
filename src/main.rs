@@ -4,7 +4,6 @@ mod authorized;
 mod form_size_limit;
 mod upload;
 
-use once_cell::sync::Lazy;
 use rocket::{
     catch, catchers,
     form::{Errors, Form},
@@ -14,10 +13,10 @@ use rocket::{
 };
 use std::{
     borrow::Cow,
-    path::{Path, PathBuf},
+    path::{Path, PathBuf}, sync::LazyLock,
 };
 
-static UPLOAD_DIR: Lazy<PathBuf> = Lazy::new(|| {
+static UPLOAD_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     Path::new(include_str!("../upload_path"))
         .canonicalize()
         .expect("upload dir not found")

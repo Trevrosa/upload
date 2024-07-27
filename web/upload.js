@@ -100,22 +100,20 @@ function upload(_file, token, logger, _name = null) {
             mainLogger.innerHTML = `${oldStatus}: almost done..` + msg;
 
             function finish() {
-                const request = new XMLHttpRequest();
+                const finishing = new EventSource(`/upload/upload/done/${id}/${file.name}/${num}`);
 
-                request.onload = () => {
-                    const response = request.response;
+                finishing.onmessage = (msg) => {
                     mainLogger.style.textDecoration = null;
 
                     doneProcessing = true;
+                    if (!collapsed) { toggleCollapse(); }
 
-                    if (request.status == 201) {
-                        if (!collapsed) { toggleCollapse(); }
-
+                    if (msg.lastEventId == "done") {
                         mainLogger.onclick = null;
                         mainLogger.style.cursor = null;
-                        mainLogger.innerHTML = `uploaded! see <a href="${response}">${response}</a>`;
+                        mainLogger.innerHTML = `uploaded! see <a href="${msg.data}">${msg.data}</a>`;
                     } else {
-                        mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">${response}</div>`;
+                        mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">${msg.data}</div>`;
                         
                         const button = document.createElement("button");
                         button.style.marginLeft = "5px";
@@ -124,23 +122,27 @@ function upload(_file, token, logger, _name = null) {
 
                         mainLogger.appendChild(button);
                     }
+
+                    // stop reconnecting
+                    finishing.close();
                 };
 
-                request.onerror = () => {
+                finishing.onerror = (err) => {
                     mainLogger.style.textDecoration = null;
-                    mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">request error: ${request.status}</div>`;
+                    mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">EventSource failed, check console</div>`;
                     
+                    console.error(err);
+
                     const button = document.createElement("button");
                     button.style.marginLeft = "5px";
                     button.innerText = "retry?";
                     button.onclick = finish;
 
                     mainLogger.appendChild(button);
+
+                    // stop reconnecting
+                    finishing.close();
                 };
-                
-                request.open("PUT", `/upload/upload/done/${id}/${file.name}/${num}`);
-                request.setRequestHeader("token", token);
-                request.send();
             }
 
             finish();
@@ -156,7 +158,10 @@ function upload(_file, token, logger, _name = null) {
             const chunkLogger = document.createElement("p"); 
             logger.appendChild(chunkLogger);
             
-            function uploadChunk() {
+            /**
+             * @param {Boolean} retry 
+             */
+            function uploadChunk(retry) {
                 chunkLogger.innerText = `chunk #${num} initializing..`;
     
                 const request = new XMLHttpRequest();
@@ -173,6 +178,8 @@ function upload(_file, token, logger, _name = null) {
     
                 request.onload = () => {
                     if (request.status == 201) {
+                        if (retry) { erroredNum -= 1; }
+
                         finishedNum += 1;
                         chunkLogger.innerText += " done!";
                     } else {
@@ -184,7 +191,9 @@ function upload(_file, token, logger, _name = null) {
                         const button = document.createElement("button");
                         button.innerText = "retry?";
                         button.style.marginLeft = "5px";
-                        button.onclick = uploadChunk;
+                        button.onclick = () => {
+                            uploadChunk(true);
+                        };
 
                         chunkLogger.appendChild(button);
                     }
@@ -197,7 +206,9 @@ function upload(_file, token, logger, _name = null) {
                     const button = document.createElement("button");
                     button.innerText = "retry?";
                     button.style.marginLeft = "5px";
-                    button.onclick = uploadChunk;
+                    button.onclick = () => {
+                        uploadChunk(true);
+                    };
 
                     chunkLogger.appendChild(button);
                 };
@@ -207,7 +218,7 @@ function upload(_file, token, logger, _name = null) {
                 request.send(form);
             }
 
-            uploadChunk();
+            uploadChunk(false);
         }
     } else {
         const form = new FormData();
@@ -218,40 +229,60 @@ function upload(_file, token, logger, _name = null) {
         const oldStatus = _file.name == file.name ? `uploading "${file.name}"` : `uploading "${_file.name}" as "${file.name}"`;
         defaultLogger.innerText = oldStatus;
 
-        const request = new XMLHttpRequest();
+        function uploadSmall() {
+            const request = new XMLHttpRequest();
 
-        request.onload = () => {
-            uploading = false;
-            const response = request.response;
+            request.onload = () => {
+                uploading = false;
+                const response = request.response;
 
-            if (request.status == 201) {
-                defaultLogger.innerHTML = `uploaded! see <a href="${response}">${response}</a>`;
-            } else if (request.status == 502) {
-                defaultLogger.innerHTML = "server offline; try again later";
-            } else if (request.status == 520) {
-                defaultLogger.innerHTML = "server error; try again";
-            } else {
-                defaultLogger.innerHTML += `\n\n<div style="color: #cc0000;">${response}</div>`;
-            }
-        };
+                if (request.status == 201) {
+                    defaultLogger.innerHTML = `uploaded! see <a href="${response}">${response}</a>`;
+                } else if (request.status == 502) {
+                    defaultLogger.innerHTML += "\n\n<div style='color: #cc0000; display: inline-block;'>server offline</div>";
+                } else if (request.status == 520) {
+                    defaultLogger.innerHTML += "\n\n<div style='color: #cc0000; display: inline-block;'>server error</div>";
+                } else {
+                    defaultLogger.innerHTML += `\n\n<div style="color: #cc0000; display: inline-block;">${response}</div>`;
+                }
 
-        request.upload.onerror = () => {
-            uploading = false;
-            defaultLogger.innerHTML += `\n\n<div style="color: #cc0000;">request error ${request.status}</div>`;
-        };
+                if (request.status != 201) {
+                    const button = document.createElement("button");
+                    button.style.marginLeft = "5px";
+                    button.innerText = "retry?";
+                    button.onclick = uploadSmall;
 
-        request.upload.onprogress = (ev) => {
-            const percent = Math.round((ev.loaded / ev.total) * 100);
-            defaultLogger.innerHTML = `${oldStatus}: uploaded ${ev.loaded} out of ${ev.total} bytes (${percent}%)`;
+                    defaultLogger.appendChild(button);
+                }
+            };
 
-            if (ev.loaded == ev.total) {
-                defaultLogger.innerHTML += ", wait..";
-            }
-        };
+            request.upload.onerror = () => {
+                uploading = false;
+                defaultLogger.innerHTML += `\n\n<div style="color: #cc0000; display: inline-block;">request error ${request.status}</div>`;
 
-        request.open("PUT", "/upload/upload/");
-        request.setRequestHeader("token", token);
-        request.send(form);
+                const button = document.createElement("button");
+                button.style.marginLeft = "5px";
+                button.innerText = "retry?";
+                button.onclick = uploadSmall;
+
+                defaultLogger.appendChild(button);
+            };
+
+            request.upload.onprogress = (ev) => {
+                const percent = Math.round((ev.loaded / ev.total) * 100);
+                defaultLogger.innerHTML = `${oldStatus}: uploaded ${ev.loaded} out of ${ev.total} bytes (${percent}%)`;
+
+                if (ev.loaded == ev.total) {
+                    defaultLogger.innerHTML += ", wait..";
+                }
+            };
+
+            request.open("PUT", "/upload/upload/");
+            request.setRequestHeader("token", token);
+            request.send(form);
+        }
+
+        uploadSmall();
     }
 }
 

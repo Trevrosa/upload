@@ -10,6 +10,7 @@ module.exports = [
                 "setInterval": true,
                 "console": true,
                 "XMLHttpRequest": true,
+                "EventSource": true,
             }
         },
         rules: {

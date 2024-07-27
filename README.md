@@ -5,24 +5,42 @@
 ### PUT `/`
 upload a file specified in the `file` field of the request's `multipart/form-data` body. 
 
-the form must specify the file's name.
+*the form must specify the file's name.*
+
+*the request must have a header named `token` with the set token*
 
 ### PUT `/multi/<id>/<num>`
 this endpoint allows a user to split up their upload into multiple requests.
 
-the body should be specified the same as in the normal upload.
+*the request body should be specified the same as in the normal upload.*
+
+*the request must have a header named `token` with the set token*
 
 - `<id>` specifies the unique id for and must be a string.
 - `<num>` specifies the request's order and must be a number. 
 
-### PUT `/done/<id>/<name>/<total>`
+### GET `/done/<id>/<name>/<total>`
 combine the files uploaded with `<id>` to the final file named `<name>`
 
 - `<id>` must be a string.
 - `<name>` must be a string.
 - `<total>` is the expected total chunks to be combined and must be a number.
 
-## example usage (in javascript)
+***this is a special endpoint that returns a stream of [server sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)***
+
+the event `id`s (accessed by `MessageEvent.lastEventId`) that can be returned are:
+
+- `idnotfound` - data: error message
+- `missingchunks` - data: error message
+- `duplicate` - data: error message
+- `servererror` - data: error message
+- `done` - data: url of upload
+
+**the client should close the connection (or stop re-connection) when receiving any `event` with an `id`.**
+
+*an `event` without an `id` is a "[heartbeat event](https://api.rocket.rs/v0.5/rocket/response/stream/struct.EventStream#heartbeat)" (ie. an empty comment) meant to keep the connection alive.*
+
+## example usage (javascript)
 upload a file
 ```js
 let auth = new Headers();
@@ -34,3 +52,5 @@ let resp = await fetch("/", {
   method: "PUT", headers: auth, body: form
 });
 ```
+
+### an example static web app that uses all endpoints can be found [here](https://github.com/Trevrosa/upload/tree/main/web).

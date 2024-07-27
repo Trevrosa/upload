@@ -1,102 +1,101 @@
-use std::borrow::Cow;
 use std::env::temp_dir;
 use std::io::ErrorKind;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use glob::glob;
 use rocket::fairing::AdHoc;
-use rocket::http::Status;
+use rocket::response::stream::{Event, EventStream};
 use rocket::tokio::task::spawn_blocking;
 use rocket::tokio::{fs, io};
-use rocket::{put, routes};
+use rocket::{get, routes};
 
-use crate::authorized::Authorized;
-use crate::{Response, UPLOAD_DIR};
+use crate::UPLOAD_DIR;
 
 // merges separated files into `name`
-#[put("/done/<id>/<name>/<total>")]
-async fn finish_multi(
-    _token: Authorized, // check if request is authorized
-    id: &'_ str,
-    name: &'_ str,
+// this is `get` because js's `EventSource` sends `get` requests 
+#[allow(clippy::needless_pass_by_value)]
+#[get("/done/<id>/<name>/<total>")]
+fn finish_multi<'a>(
+    id: &'a str,
+    name: &'a str,
     total: usize,
-) -> Response {
-    let matcher = temp_dir().join(format!("{id}*"));
+) -> EventStream![Event + 'a] {
+    let stream = EventStream! {
+        let matcher = temp_dir().join(format!("{id}*"));
 
-    let files = spawn_blocking(move || glob(matcher.to_str().unwrap()).unwrap());
-    // ok not to sort because glob already sorts alphabetically
-    let files: Vec<Result<PathBuf, _>> = files.await.unwrap().collect();
+        let files = spawn_blocking(move || glob(matcher.to_str().unwrap()).unwrap());
+        // ok not to sort because glob already sorts alphabetically
+        let files: Vec<Result<PathBuf, _>> = files.await.unwrap().collect();
 
-    if files.is_empty() {
-        return (Status::NotFound, Cow::Borrowed("file not found from id"));
-    }
+        if files.is_empty() {
+            yield Event::data("file not found from id").id("idnotfound");
+            return;
+        }
 
-    if files.len() != total {
-        return (
-            Status::BadRequest,
-            Cow::Owned(format!(
+        if files.len() != total {
+            let msg = format!(
                 "{}/{total} uploads received, upload the missing chunks and retry",
                 files.len()
-            )),
-        );
-    }
+            );
 
-    let final_path = UPLOAD_DIR.join(name);
-    let final_file = fs::File::options()
-        .write(true)
-        .truncate(true)
-        .create_new(true)
-        .open(&final_path)
-        .await;
+            yield Event::data(msg).id("missingchunks");
+            return;
+        }
 
-    let mut final_file = match final_file {
-        Ok(file) => file,
-        Err(err) if err.kind() == ErrorKind::AlreadyExists => {
-            println!("duplicate file {final_path:?} skipped combination, deleting temp files");
-            for file in files {
-                let file = file.unwrap();
-                if fs::remove_file(&file).await.is_err() {
-                    eprintln!("failed to delete temp file {file:?}");
-                };
+        let final_path = UPLOAD_DIR.join(name);
+        let final_file = fs::File::options()
+            .write(true)
+            .truncate(true)
+            .create_new(true)
+            .open(&final_path)
+            .await;
+
+        let mut final_file = match final_file {
+            Ok(file) => file,
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                println!("duplicate file {final_path:?} skipped combination, deleting temp files");
+                for file in files {
+                    let file = file.unwrap();
+                    if fs::remove_file(&file).await.is_err() {
+                        eprintln!("failed to delete temp file {file:?}");
+                    };
+                }
+
+                yield Event::data("cannot upload because duplicate").id("duplicate");
+                return;
             }
-
-            return (
-                Status::Conflict,
-                Cow::Borrowed("cannot upload because duplicate"),
-            );
-        }
-        Err(err) => {
-            eprintln!("error occured while creating file {err}",);
-            return (
-                Status::InternalServerError,
-                Cow::Borrowed("failed to create file"),
-            );
-        }
-    };
-
-    for (n, path) in files.iter().enumerate() {
-        let path = path.as_ref().unwrap();
-        let mut file = fs::File::open(&path).await.unwrap();
-
-        if let Err(err) = io::copy(&mut file, &mut final_file).await {
-            eprintln!("\nerror occurred while merging file {:?} ({err:?})", &path);
-            return (
-                Status::InternalServerError,
-                Cow::Owned(format!("merge file error: {err:#?}")),
-            );
+            Err(err) => {
+                eprintln!("error occured while creating file {err}",);
+                yield Event::data("failed to create file").id("servererror");
+                return;
+            }
         };
 
-        if let Err(err) = fs::remove_file(path).await {
-            eprintln!("\nfailed to delete old file ({err:?})");
+        for (n, path) in files.iter().enumerate() {
+            let path = path.as_ref().unwrap();
+            let mut file = fs::File::open(&path).await.unwrap();
+
+            if let Err(err) = io::copy(&mut file, &mut final_file).await {
+                eprintln!("\nerror occurred while merging file {:?} ({err:?})", &path);
+                yield Event::data(format!("merge file error: {err:#?}")).id("servererror");
+                return;
+            };
+
+            if let Err(err) = fs::remove_file(path).await {
+                eprintln!("\nfailed to delete old file ({err:?})");
+            }
+
+            println!("combined file (id: {id}, num: {})", n + 1);
         }
 
-        println!("combined file (id: {id}, num: {})", n + 1);
-    }
+        println!("finish combine upload (id: {id}) to {final_path:?}");
 
-    println!("finish combine upload (id: {id}) to {final_path:?}");
+        let url = format!("https://uploads.trevrosa.dev/{name}");
+        yield Event::data(url).id("done");
+    };
 
-    let url = format!("https://uploads.trevrosa.dev/{name}");
-    (Status::Created, Cow::Owned(url))
+    stream.heartbeat(Duration::from_secs(15))
 }
 
 pub fn end_multi() -> AdHoc {
