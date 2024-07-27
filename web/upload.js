@@ -85,7 +85,8 @@ function upload(_file, token, logger, _name = null) {
                 return;
             }
             const msg = collapsed ? " (collapsed)" : "";
-            mainLogger.innerHTML = `${oldStatus}: ${finishedNum}/${totalChunks} chunks done, ${erroredNum} chunks errored` + msg;
+            const percent = Math.round((finishedNum / totalChunks) * 100);
+            mainLogger.innerHTML = `${oldStatus}: ${finishedNum}/${totalChunks} chunks done (${percent}%), ${erroredNum} chunks errored` + msg;
         }, 500);
 
         setInterval(() => {
