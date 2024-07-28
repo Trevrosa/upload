@@ -13,7 +13,8 @@ use rocket::{
 };
 use std::{
     borrow::Cow,
-    path::{Path, PathBuf}, sync::LazyLock,
+    path::{Path, PathBuf},
+    sync::LazyLock,
 };
 
 static UPLOAD_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -21,6 +22,8 @@ static UPLOAD_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
         .canonicalize()
         .expect("upload dir not found")
 });
+
+const UPLOAD_URL: &str = include_str!("../upload_url");
 const TOKEN: &str = include_str!("../token");
 
 /// represents a fallible [`Form`] data guard for [`TempFile`].

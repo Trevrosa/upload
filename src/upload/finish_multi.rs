@@ -10,17 +10,13 @@ use rocket::tokio::task::spawn_blocking;
 use rocket::tokio::{fs, io};
 use rocket::{get, routes};
 
-use crate::UPLOAD_DIR;
+use crate::{UPLOAD_DIR, UPLOAD_URL};
 
 // merges separated files into `name`
-// this is `get` because js's `EventSource` sends `get` requests 
+// this is `get` because js's `EventSource` sends `get` requests
 #[allow(clippy::needless_pass_by_value)]
 #[get("/done/<id>/<name>/<total>")]
-fn finish_multi<'a>(
-    id: &'a str,
-    name: &'a str,
-    total: usize,
-) -> EventStream![Event + 'a] {
+fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Event + 'a] {
     let stream = EventStream! {
         let matcher = temp_dir().join(format!("{id}*"));
 
@@ -66,8 +62,10 @@ fn finish_multi<'a>(
                 return;
             }
             Err(err) => {
-                eprintln!("error occured while creating file {err}",);
-                yield Event::data("failed to create file").id("servererror");
+                let err = format!("error occured while creating file {err}");
+                eprintln!("{err}");
+
+                yield Event::data(err).id("servererror");
                 return;
             }
         };
@@ -91,7 +89,7 @@ fn finish_multi<'a>(
 
         println!("finish combine upload (id: {id}) to {final_path:?}");
 
-        let url = format!("https://uploads.trevrosa.dev/{name}");
+        let url = format!("{UPLOAD_URL}/{name}");
         yield Event::data(url).id("done");
     };
 

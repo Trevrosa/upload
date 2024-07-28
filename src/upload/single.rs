@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::authorized::Authorized;
 use crate::form_size_limit::FormSizeLimit;
-use crate::{FallibleFormFile, Response, UPLOAD_DIR};
+use crate::{FallibleFormFile, Response, UPLOAD_DIR, UPLOAD_URL};
 
 use rocket::fairing::AdHoc;
 use rocket::http::Status;
@@ -79,8 +79,8 @@ async fn upload_single(
 
         // unwraps are safe because path to file should never end with `..` or be `/`
         let file = path.file_name().unwrap().to_str().unwrap();
-        let url = format!("https://uploads.trevrosa.dev/{file}");
 
+        let url = format!("{UPLOAD_URL}/{file}");
         (Status::Created, Cow::Owned(url))
     }
 }

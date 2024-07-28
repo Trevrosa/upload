@@ -35,9 +35,11 @@ function upload(_file, token, logger, _name = null) {
         const totalChunks = Math.ceil(file.size / maxSize);
 
         let num = 0;
-
-        let erroredNum = 0;
         let finishedNum = 0;
+        /**
+         * @type {Set<Number>}
+         */
+        const erroredChunks = new Set();
 
         let collapsed = false;
         let done = false;
@@ -72,6 +74,7 @@ function upload(_file, token, logger, _name = null) {
             }
         };
         
+        // collapse
         mainLogger.onclick = (ev) => {
             if (ev.target.nodeName == "BUTTON") {
                 return;
@@ -80,15 +83,34 @@ function upload(_file, token, logger, _name = null) {
             toggleCollapse();
         };
 
+        // chunk status
         setInterval(() => {
             if (done) {
                 return;
             }
             const msg = collapsed ? " (collapsed)" : "";
             const percent = Math.round((finishedNum / totalChunks) * 100);
-            mainLogger.innerHTML = `${oldStatus}: ${finishedNum}/${totalChunks} chunks done (${percent}%), ${erroredNum} chunks errored` + msg;
+            mainLogger.innerHTML = `${oldStatus}: ${finishedNum}/${totalChunks} chunks done (${percent}%), ${erroredChunks.size} chunks errored` + msg;
+            
+            // retry all
+            if (erroredChunks.size > 0) {
+                const button = document.createElement("button");
+                button.style.marginLeft = "5px";
+                button.innerText = "retry all?";
+                button.id = "retryAll";
+
+                button.onclick = () => {
+                    for (const erroredChunk of erroredChunks) {
+                        const chunkLogger = logger.getElementsByClassName(erroredChunk)[0];
+                        uploadChunk(chunkLogger, true, erroredChunk);
+                    }
+                };
+
+                mainLogger.appendChild(button);
+            }
         }, 500);
 
+        // finish multi
         setInterval(() => {
             if (finishedNum != totalChunks || done) {
                 return;
@@ -101,7 +123,7 @@ function upload(_file, token, logger, _name = null) {
             mainLogger.innerHTML = `${oldStatus}: almost done..` + msg;
 
             function finish() {
-                const finishing = new EventSource(`/upload/upload/done/${id}/${file.name}/${num}`);
+                const finishing = new EventSource(`/upload/upload/done/${id}/${file.name}/${totalChunks}`);
 
                 finishing.onmessage = (msg) => {
                     mainLogger.style.textDecoration = null;
@@ -148,78 +170,88 @@ function upload(_file, token, logger, _name = null) {
 
             finish();
         }, 500);
-        
-        for (let start = 0; start < file.size; start += maxSize) {
-            num += 1;
-            
-            const chunk = file.slice(start, start + maxSize);
+
+        /**
+         * @param {HTMLParagraphElement} chunkLogger
+         * @param {Boolean} retry  
+         * @param {Number?} cnum
+         */
+        function uploadChunk(chunkLogger, retry = false, _cnum = null) {
+            chunkLogger.innerText = `chunk #${num} initializing..`;
+
+            const request = new XMLHttpRequest();
+
+            let cnum;
+            if (retry) {
+                cnum = _cnum;
+            } else {
+                cnum = num;
+            }
+
+            const chunk = file.slice((cnum-1) * maxSize, cnum * maxSize);
             const form = new FormData();
             form.set("file", chunk);
-            
-            const chunkLogger = document.createElement("p"); 
-            logger.appendChild(chunkLogger);
-            
-            /**
-             * @param {Boolean} retry 
-             */
-            function uploadChunk(retry) {
-                chunkLogger.innerText = `chunk #${num} initializing..`;
-    
-                const request = new XMLHttpRequest();
-    
-                const cnum = num;
-                request.upload.onprogress = (ev) => {
-                    const percent = Math.round((ev.loaded / ev.total) * 100);
-                    chunkLogger.innerText = `chunk #${cnum}: ${ev.loaded} out of ${ev.total} bytes (${percent}%)`;
-                    
-                    if (ev.loaded == ev.total) {
-                        chunkLogger.innerText += `, wait..`;
-                    }
-                };
-    
-                request.onload = () => {
-                    if (request.status == 201) {
-                        if (retry) { erroredNum -= 1; }
 
-                        finishedNum += 1;
-                        chunkLogger.innerText += " done!";
-                    } else {
-                        uploading = false;
-                        erroredNum += 1;
-    
-                        chunkLogger.innerHTML = `chunk #${cnum}: <div style="color: #cc0000; display: inline-block;">${request.response}</div>`;
-                        
-                        const button = document.createElement("button");
-                        button.innerText = "retry?";
-                        button.style.marginLeft = "5px";
-                        button.onclick = () => {
-                            uploadChunk(true);
-                        };
+            request.upload.onprogress = (ev) => {
+                const percent = Math.round((ev.loaded / ev.total) * 100);
+                chunkLogger.innerText = `chunk #${cnum}: ${ev.loaded} out of ${ev.total} bytes (${percent}%)`;
+                
+                if (ev.loaded == ev.total) {
+                    chunkLogger.innerText += `, wait..`;
+                }
+            };
 
-                        chunkLogger.appendChild(button);
-                    }
-                };
-    
-                request.upload.onerror = () => {
-                    erroredNum += 1;
-                    chunkLogger.innerHTML = `chunk #${cnum}: <div style="color: #cc0000; display: inline-block;">request error ${request.status}</div>`;
+            request.onload = () => {
+                if (request.status == 201) {
+                    erroredChunks.delete(cnum);
+
+                    finishedNum += 1;
+                    chunkLogger.innerText += " done!";
+                } else {
+                    uploading = false;
+                    erroredChunks.add(cnum);
+
+                    chunkLogger.innerHTML = `chunk #${cnum}: <div style="color: #cc0000; display: inline-block;">${request.response}</div>`;
                     
                     const button = document.createElement("button");
                     button.innerText = "retry?";
                     button.style.marginLeft = "5px";
                     button.onclick = () => {
-                        uploadChunk(true);
+                        uploadChunk(chunkLogger, true, cnum);
                     };
 
                     chunkLogger.appendChild(button);
-                };
-    
-                request.open("PUT", `/upload/upload/multi/${id}/${num}`);
-                request.setRequestHeader("token", token);
-                request.send(form);
-            }
+                }
+            };
 
-            uploadChunk(false);
+            request.upload.onerror = () => {
+                erroredChunks.add(cnum);
+                chunkLogger.innerHTML = `chunk #${cnum}: <div style="color: #cc0000; display: inline-block;">request error ${request.status}</div>`;
+                
+                const button = document.createElement("button");
+                button.innerText = "retry?";
+                button.style.marginLeft = "5px";
+                button.onclick = () => {
+                    uploadChunk(chunkLogger, true, cnum);
+                };
+
+                chunkLogger.appendChild(button);
+            };
+
+            request.open("PUT", `/upload/upload/multi/${id}/${cnum}`);
+            request.setRequestHeader("token", token);
+            request.send(form);
+        }
+        
+        // upload chunks
+        for (let start = 0; start < file.size; start += maxSize) {
+            num += 1;
+            
+            const chunkLogger = document.createElement("p");
+            chunkLogger.className = num;
+            logger.appendChild(chunkLogger);
+
+            uploadChunk(chunkLogger);
         }
     } else {
         const form = new FormData();
@@ -319,7 +351,7 @@ button.onclick = () => {
     const files = document.getElementById("file").files;
 
     if (files.length == 0) {
-        defaultLogger.firstChild.innerText = "u dont put file";
+        defaultLogger.children[0].innerHTML = "u dont put file";
         return;
     }
 
@@ -329,7 +361,7 @@ button.onclick = () => {
     const token = document.getElementById("token").value;
 
     if (token === "") {
-        defaultLogger.firstChild.innerText = "u dont put password";
+        defaultLogger.children[0].innerHTML = "u dont put password";
         return;
     }
 

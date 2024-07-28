@@ -1,6 +1,4 @@
-# depends
 /target
-node_modules
 
 # OS
 .DS_Store
@@ -8,3 +6,4 @@ Thumbs.db
 
 /token
 /upload_path
+/upload_url

@@ -28,7 +28,7 @@ combine the files uploaded with `<id>` to the final file named `<name>`
 
 ***this is a special endpoint that returns a stream of [server sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)***
 
-the event `id`s (accessed by `MessageEvent.lastEventId`) that can be returned are:
+the event `id`s that can be returned are (every event is a `message`):
 
 - `idnotfound` - data: error message
 - `missingchunks` - data: error message
@@ -36,7 +36,7 @@ the event `id`s (accessed by `MessageEvent.lastEventId`) that can be returned ar
 - `servererror` - data: error message
 - `done` - data: url of upload
 
-**the client should close the connection (or stop re-connection) when receiving any `event` with an `id`.**
+*the client should close the connection (or stop re-connection) when receiving any `event` with an `id`.*
 
 *an `event` without an `id` is a "[heartbeat event](https://api.rocket.rs/v0.5/rocket/response/stream/struct.EventStream#heartbeat)" (ie. an empty comment) meant to keep the connection alive.*
 
