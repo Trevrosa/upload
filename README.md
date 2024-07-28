@@ -38,7 +38,7 @@ the event `id`s that can be returned are (every event is a `message`):
 
 *the client should close the connection (or stop re-connection) when receiving any `event` with an `id`.*
 
-*an `event` without an `id` is a "[heartbeat event](https://api.rocket.rs/v0.5/rocket/response/stream/struct.EventStream#heartbeat)" (ie. an empty comment) meant to keep the connection alive.*
+an `event` without an `id` is a "[heartbeat event](https://api.rocket.rs/v0.5/rocket/response/stream/struct.EventStream#heartbeat)" (an empty comment) meant to keep the connection alive.
 
 ## example usage (javascript)
 upload a file
