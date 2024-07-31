@@ -177,6 +177,7 @@ function upload(_file, token, logger, _name = null) {
         }, 500);
 
         /**
+         * upload a chunk
          * @param {HTMLParagraphElement} chunkLogger
          * @param {Boolean} retry  
          * @param {Number?} cnum
