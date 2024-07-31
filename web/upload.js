@@ -119,13 +119,17 @@ function upload(_file, token, logger, _name = null) {
             done = true;
             uploading = false;
 
-            const msg = collapsed ? " (collapsed)" : "";
-            mainLogger.innerHTML = `${oldStatus}: almost done..` + msg;
+            const collapseMsg = collapsed ? " (collapsed)" : "";
+            mainLogger.innerHTML = `${oldStatus}: almost done..` + collapseMsg;
 
             function finish() {
                 const finishing = new EventSource(`/upload/upload/done/${id}/${file.name}/${totalChunks}`);
 
                 finishing.onmessage = (msg) => {
+                    if (msg.lastEventId != "progress") {
+                        finishing.close();
+                    }
+
                     mainLogger.style.textDecoration = null;
 
                     doneProcessing = true;
@@ -135,19 +139,13 @@ function upload(_file, token, logger, _name = null) {
                         mainLogger.onclick = null;
                         mainLogger.style.cursor = null;
                         mainLogger.innerHTML = `uploaded! see <a href="${msg.data}">${msg.data}</a>`;
-                        
-                        // stop reconnecting
-                        finishing.close();
                     } else if (msg.lastEventId == "progress") {
-                        mainLogger.innerHTML = `${oldStatus}: almost done.. (${msg.data}/${totalChunks})` + msg;
+                        mainLogger.innerHTML = `${oldStatus}: almost done.. (${msg.data}/${totalChunks})` + collapseMsg;
                     } else {
                         mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">${msg.data}</div>`;
-
-                        // stop reconnecting
-                        finishing.close();
                     }
 
-                    if (msg.lastEventId != "duplicate") {
+                    if (msg.lastEventId != "done" && msg.lastEventId != "progress" && msg.lastEventId != "duplicate") {
                         const button = document.createElement("button");
                         button.style.marginLeft = "5px";
                         button.innerText = "retry?";
