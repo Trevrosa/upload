@@ -14,9 +14,9 @@ var uploading = false;
 
 /**
  * @param {File} _file 
- * @param {string} token
+ * @param {String} token
  * @param {HTMLDivElement} logger
- * @param {string?} _name
+ * @param {String?} _name
  */
 function upload(_file, token, logger, _name = null) {
     let name = _file.name;
@@ -135,9 +135,19 @@ function upload(_file, token, logger, _name = null) {
                         mainLogger.onclick = null;
                         mainLogger.style.cursor = null;
                         mainLogger.innerHTML = `uploaded! see <a href="${msg.data}">${msg.data}</a>`;
+                        
+                        // stop reconnecting
+                        finishing.close();
+                    } else if (msg.lastEventId == "progress") {
+                        mainLogger.innerHTML = `${oldStatus}: almost done.. (${msg.data}/${totalChunks})` + msg;
                     } else {
                         mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">${msg.data}</div>`;
-                        
+
+                        // stop reconnecting
+                        finishing.close();
+                    }
+
+                    if (msg.lastEventId != "duplicate") {
                         const button = document.createElement("button");
                         button.style.marginLeft = "5px";
                         button.innerText = "retry?";
@@ -145,9 +155,6 @@ function upload(_file, token, logger, _name = null) {
 
                         mainLogger.appendChild(button);
                     }
-
-                    // stop reconnecting
-                    finishing.close();
                 };
 
                 finishing.onerror = (err) => {
@@ -279,7 +286,8 @@ function upload(_file, token, logger, _name = null) {
                     defaultLogger.innerHTML += `\n\n<div style="color: #cc0000; display: inline-block;">${response}</div>`;
                 }
 
-                if (request.status != 201) {
+                // 409 = conflict (duplicate file), 403 = forbidden
+                if (request.status != 201 && request.status != 409 && request.status != 403) {
                     const button = document.createElement("button");
                     button.style.marginLeft = "5px";
                     button.innerText = "retry?";
@@ -319,6 +327,7 @@ function upload(_file, token, logger, _name = null) {
     }
 }
 
+// allow rename single file
 document.getElementById("file").onchange = () => {
     /**
      * @type {File[]}
@@ -356,7 +365,7 @@ button.onclick = () => {
     }
 
     /**
-     * @type {string}
+     * @type {String}
      */
     const token = document.getElementById("token").value;
 

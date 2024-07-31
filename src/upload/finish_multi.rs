@@ -13,7 +13,7 @@ use rocket::{get, routes};
 use crate::{UPLOAD_DIR, UPLOAD_URL};
 
 // merges separated files into `name`
-// this is `get` because js's `EventSource` sends `get` requests
+// this is get because js's `EventSource` sends get requests
 #[allow(clippy::needless_pass_by_value)]
 #[get("/done/<id>/<name>/<total>")]
 fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Event + 'a] {
@@ -39,10 +39,11 @@ fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Ev
             return;
         }
 
+        // `name` cannot be `..` because of urls (`/done/id/../total` would become `/done/id/total`, thus not matched by this route)
+        // `name` also cannot include a path (`/done/id/etc/etc/total` would not be matched by this route)
         let final_path = UPLOAD_DIR.join(name);
         let final_file = fs::File::options()
             .write(true)
-            .truncate(true)
             .create_new(true)
             .open(&final_path)
             .await;
@@ -85,6 +86,7 @@ fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Ev
             }
 
             println!("combined file (id: {id}, num: {})", n + 1);
+            yield Event::data((n + 1).to_string()).id("progress");
         }
 
         println!("finish combine upload (id: {id}) to {final_path:?}");

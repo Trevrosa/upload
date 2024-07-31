@@ -34,9 +34,10 @@ the event `id`s that can be returned are (every event is a `message`):
 - `missingchunks` - data: error message
 - `duplicate` - data: error message
 - `servererror` - data: error message
+- `progress` - data: total number of files combined
 - `done` - data: url of upload
 
-*the client should close the connection (or stop re-connection) when receiving any `event` with an `id`.*
+*the client should close the connection (or stop reconnecting) on receiving any `event` with `id` not `progress`.*
 
 an `event` without an `id` is a "[heartbeat event](https://api.rocket.rs/v0.5/rocket/response/stream/struct.EventStream#heartbeat)" (an empty comment) meant to keep the connection alive.
 
