@@ -212,7 +212,6 @@ async function upload(_file, token, logger, _name = null) {
             const chunk = file.slice((cnum-1) * maxSize, cnum * maxSize);
             const form = new FormData();
             const hash = XXH.h32(await chunk.arrayBuffer(), 0);
-            console.debug(hash);
 
             form.set("file", chunk);
             form.set("hash", hash);
