@@ -26,10 +26,13 @@ static UPLOAD_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
 const UPLOAD_URL: &str = include_str!("../upload_url");
 const TOKEN: &str = include_str!("../token");
 
+/// fallible [`Form`] data guard for `F`
+type FallibleForm<'a, F> = Result<Form<F>, Errors<'a>>;
+
 /// represents a fallible [`Form`] data guard for [`TempFile`].
 ///
 /// if the form data guard fails, this type exposes its errors (instead of the route failing)
-type FallibleFormFile<'a> = Result<Form<TempFile<'a>>, Errors<'a>>;
+type FallibleFormFile<'a> = FallibleForm<'a, TempFile<'a>>;
 
 /// response used by routes
 type Response = (Status, Cow<'static, str>);

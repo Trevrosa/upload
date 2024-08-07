@@ -1,24 +1,36 @@
 use std::borrow::Cow;
 use std::env::temp_dir;
+use std::fs;
 
 use rocket::fairing::AdHoc;
+use rocket::fs::TempFile;
 use rocket::http::Status;
-use rocket::{put, routes};
+use rocket::tokio::task::spawn_blocking;
+use rocket::{post, routes, FromForm};
+use xxhash_rust::xxh32::xxh32;
 
 use crate::authorized::Authorized;
 use crate::form_size_limit::FormSizeLimit;
-use crate::{FallibleFormFile, Response};
+use crate::{FallibleForm, Response};
+
+#[derive(FromForm)]
+struct Chunk<'a> {
+    file: TempFile<'a>,
+    hash: u32,
+}
+
+type FallibleFormChunk<'a> = FallibleForm<'a, Chunk<'a>>;
 
 // `id` is the unique id used for an upload split to multiple requests
-#[put("/multi/<id>/<num>", data = "<file>")]
+#[post("/multi/<id>/<num>", data = "<file>")]
 async fn upload_multi(
     _size: FormSizeLimit, // check the size of upload
     _authed: Authorized,  // check the if request is authorized
     id: &'_ str,
     num: u32,
-    file: FallibleFormFile<'_>,
+    file: FallibleFormChunk<'_>,
 ) -> Response {
-    let mut file = match file {
+    let mut chunk = match file {
         Ok(input) => input,
         Err(errs) => {
             let err = errs.first().unwrap();
@@ -31,14 +43,7 @@ async fn upload_multi(
     let path = format!("{id}-({num})");
     let path = temp_dir().join(path);
 
-    if path.exists() {
-        println!("duplicate multi upload skipped");
-        return (
-            Status::Conflict,
-            Cow::Borrowed("split upload already exists for this id and number"),
-        );
-    }
-
+    let file = &mut chunk.file;
     let save_result = file.persist_to(&path).await;
 
     if let Err(err) = save_result {
@@ -47,8 +52,29 @@ async fn upload_multi(
 
         (Status::InternalServerError, Cow::Owned(err))
     } else {
-        println!("finish multi upload (id: {id}, num: {num})");
-        (Status::Created, Cow::Borrowed("done"))
+        let hash = spawn_blocking(|| {
+            let Ok(file) = fs::read(path) else {
+                return Err(());
+            };
+
+            Ok(xxh32(&file, 0))
+        })
+        .await;
+
+        let Ok(Ok(hash)) = hash else {
+            return (
+                Status::InternalServerError,
+                Cow::Borrowed("hashing thread failed"),
+            );
+        };
+
+        if hash == chunk.hash {
+            println!("finish multi upload (id: {id}, num: {num}), hash ok");
+            (Status::Created, Cow::Borrowed("done"))
+        } else {
+            println!("finish multi upload (id: {id}, num: {num}), hash bad");
+            (Status::BadRequest, Cow::Borrowed("hash mismatch, retry"))
+        }
     }
 }
 

@@ -9,10 +9,16 @@ upload a file specified in the `file` field of the request's `multipart/form-dat
 
 *the request must have a header named `token` with the set token*
 
-### PUT `/multi/<id>/<num>`
+### POST `/multi/<id>/<num>`
 this endpoint allows a user to split up their upload into multiple requests.
 
+the `id` is meant to be unique for each file upload
+
+this is POST, not PUT, because it can be retried
+
 *the request body should be specified the same as in the normal upload.*
+
+*additionally, the form sent must include a `hash` field, in which includes a xxhash32 hash of the file being uploaded.*
 
 *the request must have a header named `token` with the set token*
 
@@ -21,6 +27,8 @@ this endpoint allows a user to split up their upload into multiple requests.
 
 ### GET `/done/<id>/<name>/<total>`
 combine the files uploaded with `<id>` to the final file named `<name>`
+
+*this endpoint does not require the `token` header because it requires a valid id*
 
 - `<id>` must be a string.
 - `<name>` must be a string.

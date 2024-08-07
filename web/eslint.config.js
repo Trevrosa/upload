@@ -11,6 +11,7 @@ module.exports = [
                 "console": true,
                 "XMLHttpRequest": true,
                 "EventSource": true,
+                "XXH": true,
             }
         },
         rules: {

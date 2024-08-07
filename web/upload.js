@@ -18,7 +18,7 @@ var uploading = false;
  * @param {HTMLDivElement} logger
  * @param {String?} _name
  */
-function upload(_file, token, logger, _name = null) {
+async function upload(_file, token, logger, _name = null) {
     let name = _file.name;
     if (_name !== null) {
         name = _name;
@@ -40,6 +40,10 @@ function upload(_file, token, logger, _name = null) {
          * @type {Set<Number>}
          */
         const erroredChunks = new Set();
+        /**
+         * @type {Set<Number>}
+         */
+        const retryingChunks = new Set();
 
         let collapsed = false;
         let done = false;
@@ -88,9 +92,12 @@ function upload(_file, token, logger, _name = null) {
             if (done) {
                 return;
             }
-            const msg = collapsed ? " (collapsed)" : "";
+
+            const collapsedMsg = collapsed ? " (collapsed)" : "";
+            const retryingMsg = retryingChunks.size > 0 ? `, ${retryingChunks.size} chunks retrying` : "";
             const percent = Math.round((finishedNum / totalChunks) * 100);
-            mainLogger.innerHTML = `${oldStatus}: ${finishedNum}/${totalChunks} chunks done (${percent}%), ${erroredChunks.size} chunks errored` + msg;
+
+            mainLogger.innerHTML = `${oldStatus}: ${finishedNum}/${totalChunks} chunks done (${percent}%), ${erroredChunks.size} chunks errored` + retryingMsg + collapsedMsg;
             
             // retry all
             if (erroredChunks.size > 0) {
@@ -99,10 +106,10 @@ function upload(_file, token, logger, _name = null) {
                 button.innerText = "retry all?";
                 button.id = "retryAll";
 
-                button.onclick = () => {
+                button.onclick = async () => {
                     for (const erroredChunk of erroredChunks) {
                         const chunkLogger = logger.getElementsByClassName(erroredChunk)[0];
-                        uploadChunk(chunkLogger, true, erroredChunk);
+                        await uploadChunk(chunkLogger, true, erroredChunk);
                     }
                 };
 
@@ -182,7 +189,7 @@ function upload(_file, token, logger, _name = null) {
          * @param {Boolean} retry  
          * @param {Number?} cnum
          */
-        function uploadChunk(chunkLogger, retry = false, _cnum = null) {
+        async function uploadChunk(chunkLogger, retry = false, _cnum = null) {
             chunkLogger.innerText = `chunk #${num} initializing..`;
 
             const request = new XMLHttpRequest();
@@ -194,9 +201,21 @@ function upload(_file, token, logger, _name = null) {
                 cnum = num;
             }
 
+            if (retryingChunks.has(cnum)) {
+                return;
+            }
+
+            if (retry) {
+                retryingChunks.add(cnum);
+            }
+
             const chunk = file.slice((cnum-1) * maxSize, cnum * maxSize);
             const form = new FormData();
+            const hash = XXH.h32(await chunk.arrayBuffer(), 0);
+            console.debug(hash);
+
             form.set("file", chunk);
+            form.set("hash", hash);
 
             request.upload.onprogress = (ev) => {
                 const percent = Math.round((ev.loaded / ev.total) * 100);
@@ -208,11 +227,17 @@ function upload(_file, token, logger, _name = null) {
             };
 
             request.onload = () => {
+                retryingChunks.delete(cnum);
                 if (request.status == 201) {
                     erroredChunks.delete(cnum);
 
                     finishedNum += 1;
                     chunkLogger.innerText += " done!";
+                } else if (request.status == 409) { // conflict, means already exist
+                    erroredChunks.delete(cnum);
+                    
+                    finishedNum += 1;
+                    chunkLogger.innerText += " done! (already uploaded)";
                 } else {
                     uploading = false;
                     erroredChunks.add(cnum);
@@ -222,8 +247,8 @@ function upload(_file, token, logger, _name = null) {
                     const button = document.createElement("button");
                     button.innerText = "retry?";
                     button.style.marginLeft = "5px";
-                    button.onclick = () => {
-                        uploadChunk(chunkLogger, true, cnum);
+                    button.onclick = async () => {
+                        await uploadChunk(chunkLogger, true, cnum);
                     };
 
                     chunkLogger.appendChild(button);
@@ -237,14 +262,14 @@ function upload(_file, token, logger, _name = null) {
                 const button = document.createElement("button");
                 button.innerText = "retry?";
                 button.style.marginLeft = "5px";
-                button.onclick = () => {
-                    uploadChunk(chunkLogger, true, cnum);
+                button.onclick = async () => {
+                    await uploadChunk(chunkLogger, true, cnum);
                 };
 
                 chunkLogger.appendChild(button);
             };
 
-            request.open("PUT", `/upload/upload/multi/${id}/${cnum}`);
+            request.open("POST", `/upload/upload/multi/${id}/${cnum}`);
             request.setRequestHeader("token", token);
             request.send(form);
         }
@@ -257,7 +282,7 @@ function upload(_file, token, logger, _name = null) {
             chunkLogger.className = num;
             logger.appendChild(chunkLogger);
 
-            uploadChunk(chunkLogger);
+            await uploadChunk(chunkLogger);
         }
     } else {
         const form = new FormData();
@@ -348,7 +373,7 @@ document.getElementById("file").onchange = () => {
     }
 };
 
-button.onclick = () => {
+button.onclick = async () => {
     if (uploading) {
         return;
     }
@@ -406,7 +431,7 @@ button.onclick = () => {
             statuses.appendChild(logger);
             logger.appendChild(status);
 
-            upload(file, token, logger);
+            await upload(file, token, logger);
         }
     }
 };
