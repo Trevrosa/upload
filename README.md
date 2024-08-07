@@ -18,7 +18,7 @@ this is POST, not PUT, because it can be retried
 
 *the request body should be specified the same as in the normal upload.*
 
-*additionally, the form sent must include a `hash` field, in which includes a xxhash32 hash of the file being uploaded.*
+*additionally, the form sent must include a `hash` field with a [XXH32](https://github.com/Cyan4973/xxHash) hash of the file being uploaded.*
 
 *the request must have a header named `token` with the set token*
 
