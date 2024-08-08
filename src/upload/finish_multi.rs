@@ -75,7 +75,7 @@ fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Ev
 
         let files = spawn_blocking(move || glob(matcher.to_str().unwrap()).unwrap()).await;
         let Ok(files) = files else {
-            yield Event::data("failed to ").id(ServerError);
+            yield Event::data("failed to find chunks").id(ServerError);
             return;
         };
 
