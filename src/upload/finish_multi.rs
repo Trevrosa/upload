@@ -84,7 +84,7 @@ fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Ev
 
         if files.len() != total && !files.is_empty() {
             let msg = format!(
-                "{}/{total} uploads received, upload the missing chunks and retry",
+                "{} chunks were received, but {total} chunks was specified. are some chunks missing?",
                 files.len()
             );
 
