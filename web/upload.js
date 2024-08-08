@@ -56,6 +56,7 @@ async function upload(_file, token, logger, _name = null) {
         mainLogger.title = "click me";
         mainLogger.style.cursor = "pointer";
         mainLogger.style.textDecoration = "underline";
+        mainLogger.style.userSelect = "none";
 
         function toggleCollapse() {
             for (var i = 0; i < mainLogger.parentNode.children.length; i++) {
@@ -63,7 +64,8 @@ async function upload(_file, token, logger, _name = null) {
                 if (child.classList.contains("main")) {
                     continue;
                 }
-                if (child.style.display == "block" | child.style.display == "") {
+                // if shown, hide
+                if (!collapsed) {
                     child.style.display = "none";
                 } else {
                     child.style.display = "block";
@@ -145,10 +147,13 @@ async function upload(_file, token, logger, _name = null) {
                     if (msg.lastEventId == "done") {
                         mainLogger.onclick = null;
                         mainLogger.style.cursor = null;
+                        mainLogger.style.userSelect = "none";
+
                         mainLogger.innerHTML = `uploaded! see <a href="${msg.data}">${msg.data}</a>`;
                     } else if (msg.lastEventId == "progress") {
                         mainLogger.innerHTML = `${oldStatus}: almost done.. (${msg.data}/${totalChunks})` + collapseMsg;
                     } else {
+                        mainLogger.style.userSelect = "none";
                         mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">${msg.data}</div>`;
                     }
 
@@ -279,6 +284,9 @@ async function upload(_file, token, logger, _name = null) {
             
             const chunkLogger = document.createElement("p");
             chunkLogger.className = num;
+            if (collapsed) {
+                chunkLogger.style.display = "none";
+            }
             logger.appendChild(chunkLogger);
 
             await uploadChunk(chunkLogger);

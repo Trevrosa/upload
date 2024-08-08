@@ -14,7 +14,9 @@ this endpoint allows a user to split up their upload into multiple requests.
 
 the `id` is meant to be unique for each file upload
 
-this is POST, not PUT, because it can be retried
+this is POST, not PUT, to allow retries
+
+*the id **must not** end with `)-`*
 
 *the request body should be specified the same as in the normal upload.*
 
@@ -27,6 +29,8 @@ this is POST, not PUT, because it can be retried
 
 ### GET `/done/<id>/<name>/<total>`
 combine the files uploaded with `<id>` to the final file named `<name>`
+
+this endpoint is GET, not PUT, because javascript's `EventSource` only sends GETs
 
 *this endpoint does not require the `token` header because it requires a valid id*
 

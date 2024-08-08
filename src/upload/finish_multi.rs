@@ -1,6 +1,8 @@
+use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::env::temp_dir;
 use std::io::ErrorKind;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use glob::glob;
@@ -12,35 +14,93 @@ use rocket::{get, routes};
 
 use crate::{UPLOAD_DIR, UPLOAD_URL};
 
+/// order two file names with template `({id})-{num}` by `num`
+///
+/// # Panics
+///
+/// will panic if the path names of `a` or `b` do not fit the template `({id})-{num}`
+fn order_chunks(a: &Path, b: &Path) -> Ordering {
+    let a: u32 = a
+        .to_string_lossy()
+        .split(")-")
+        .last()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let b: u32 = b
+        .to_string_lossy()
+        .split(")-")
+        .last()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    a.cmp(&b)
+}
+
+enum EventIds {
+    ServerError,
+    IdNotFound,
+    MissingChunks,
+    Progress,
+    Duplicate,
+    Done,
+}
+
+use EventIds::{Done, Duplicate, IdNotFound, MissingChunks, Progress, ServerError};
+
+// for use in Event::id
+impl From<EventIds> for Cow<'static, str> {
+    fn from(val: EventIds) -> Self {
+        let id = match val {
+            ServerError => "servererror",
+            IdNotFound => "idnotfound",
+            MissingChunks => "missingchunks",
+            Progress => "progress",
+            Duplicate => "duplicate",
+            Done => "done",
+        };
+
+        Cow::Borrowed(id)
+    }
+}
+
 // merges separated files into `name`
 // this is get because js's `EventSource` sends get requests
 #[allow(clippy::needless_pass_by_value)]
 #[get("/done/<id>/<name>/<total>")]
 fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Event + 'a] {
     let stream = EventStream! {
-        let matcher = temp_dir().join(format!("{id}*"));
+        let matcher = temp_dir().join(format!("({id}*"));
 
-        let files = spawn_blocking(move || glob(matcher.to_str().unwrap()).unwrap());
-        // ok not to sort because glob already sorts alphabetically
-        let files: Vec<Result<PathBuf, _>> = files.await.unwrap().collect();
-
-        if files.is_empty() {
-            yield Event::data("file not found from id").id("idnotfound");
+        let files = spawn_blocking(move || glob(matcher.to_str().unwrap()).unwrap()).await;
+        let Ok(files) = files else {
+            yield Event::data("failed to ").id(ServerError);
             return;
-        }
+        };
 
-        if files.len() != total {
+        // unwrap but ignore Err variants
+        let mut files: Vec<PathBuf> = files.flatten().collect();
+
+        if files.len() != total && !files.is_empty() {
             let msg = format!(
                 "{}/{total} uploads received, upload the missing chunks and retry",
                 files.len()
             );
 
-            yield Event::data(msg).id("missingchunks");
+            yield Event::data(msg).id(MissingChunks);
             return;
         }
 
-        // `name` cannot be `..` because of urls (`/done/id/../total` would become `/done/id/total`, thus not matched by this route)
-        // `name` also cannot include a path (`/done/id/etc/etc/total` would not be matched by this route)
+        if files.is_empty() {
+            yield Event::data("file not found from id").id(IdNotFound);
+            return;
+        }
+
+        files.sort_by(|a, b| order_chunks(a, b));
+
+        // `name` cannot be `..` because `/done/id/../total` would become `/done/id/total`, thus not matched by this route
+        // `name` also cannot include extra directories; `/done/id/etc/etc/total` would not be matched by this route
         let final_path = UPLOAD_DIR.join(name);
         let final_file = fs::File::options()
             .write(true)
@@ -53,46 +113,47 @@ fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Ev
             Err(err) if err.kind() == ErrorKind::AlreadyExists => {
                 println!("duplicate file {final_path:?} skipped combination, deleting temp files");
                 for file in files {
-                    let file = file.unwrap();
                     if fs::remove_file(&file).await.is_err() {
                         eprintln!("failed to delete temp file {file:?}");
                     };
                 }
 
-                yield Event::data("cannot upload because duplicate").id("duplicate");
+                yield Event::data("cannot upload because duplicate").id(Duplicate);
                 return;
             }
             Err(err) => {
                 let err = format!("error occured while creating file {err}");
                 eprintln!("{err}");
 
-                yield Event::data(err).id("servererror");
+                yield Event::data(err).id(ServerError);
                 return;
             }
         };
 
         for (n, path) in files.iter().enumerate() {
-            let path = path.as_ref().unwrap();
-            let mut file = fs::File::open(&path).await.unwrap();
+            let Ok(mut file) = fs::File::open(&path).await else {
+                yield Event::data(format!("failed to read chunk #{n}")).id(ServerError);
+                return;
+            };
 
             if let Err(err) = io::copy(&mut file, &mut final_file).await {
-                eprintln!("\nerror occurred while merging file {:?} ({err:?})", &path);
-                yield Event::data(format!("merge file error: {err:#?}")).id("servererror");
+                eprintln!("error occurred while merging file {:?} ({err:?})", &path);
+                yield Event::data(format!("merge file error: {err:#?}")).id(ServerError);
                 return;
             };
 
             if let Err(err) = fs::remove_file(path).await {
-                eprintln!("\nfailed to delete old file ({err:?})");
+                eprintln!("failed to delete old file ({err:?})");
             }
 
             println!("combined file (id: {id}, num: {})", n + 1);
-            yield Event::data((n + 1).to_string()).id("progress");
+            yield Event::data((n + 1).to_string()).id(Progress);
         }
 
         println!("finish combine upload (id: {id}) to {final_path:?}");
 
         let url = format!("{UPLOAD_URL}/{name}");
-        yield Event::data(url).id("done");
+        yield Event::data(url).id(Done);
     };
 
     stream.heartbeat(Duration::from_secs(15))
