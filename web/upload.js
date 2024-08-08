@@ -403,6 +403,17 @@ document.getElementById("file").onchange = () => {
     }
 };
 
+document.getElementById("token").onload = () => {
+    const token = localStorage.getItem("token");
+    if (token) {
+        document.getElementById("token").value = token;
+    }
+};
+
+document.getElementById("token").onchange = () => {
+    localStorage.setItem("token", document.getElementById("token").value);
+};
+
 button.onclick = async () => {
     if (uploading) {
         return;

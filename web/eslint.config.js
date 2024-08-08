@@ -13,6 +13,7 @@ module.exports = [
                 "EventSource": true,
                 "XXH": true,
                 "setTimeout": true,
+                "localStorage": true,
             }
         },
         rules: {
