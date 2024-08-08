@@ -1,0 +1,2 @@
+web/eslint.config.js -linguist-detectable
+web/xxhash.min.js -linguist-detectable
