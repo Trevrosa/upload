@@ -119,6 +119,8 @@ async function upload(_file, token, logger, _name = null) {
             }
         }, 500);
 
+        let firstFinish = true;
+
         // finish multi
         setInterval(() => {
             if (finishedNum != totalChunks || done) {
@@ -127,6 +129,11 @@ async function upload(_file, token, logger, _name = null) {
 
             done = true;
             uploading = false;
+
+            if (firstFinish) {
+                firstFinish = false;
+                if (!collapsed) { toggleCollapse(); }
+            }
 
             const collapseMsg = collapsed ? " (collapsed)" : "";
             mainLogger.innerHTML = `${oldStatus}: almost done..` + collapseMsg;
@@ -144,6 +151,8 @@ async function upload(_file, token, logger, _name = null) {
                     doneProcessing = true;
 
                     if (msg.lastEventId == "done") {
+                        if (!collapsed) { toggleCollapse(); }
+
                         mainLogger.onclick = null;
                         mainLogger.style.cursor = null;
                         mainLogger.style.userSelect = "none";
@@ -152,13 +161,11 @@ async function upload(_file, token, logger, _name = null) {
                     } else if (msg.lastEventId == "progress") {
                         mainLogger.innerHTML = `${oldStatus}: almost done.. (${msg.data}/${totalChunks})` + collapseMsg;
                     } else {
-                        mainLogger.style.userSelect = "none";
+                        mainLogger.style.userSelect = "";
                         mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">${msg.data}</div>`;
                     }
 
                     if (msg.lastEventId != "done" && msg.lastEventId != "progress" && msg.lastEventId != "duplicate") {
-                        if (collapsed) { toggleCollapse(); }
-                        
                         const button = document.createElement("button");
                         button.style.marginLeft = "5px";
                         button.innerText = "retry?";
