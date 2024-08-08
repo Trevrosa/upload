@@ -12,6 +12,7 @@ module.exports = [
                 "XMLHttpRequest": true,
                 "EventSource": true,
                 "XXH": true,
+                "setTimeout": true,
             }
         },
         rules: {

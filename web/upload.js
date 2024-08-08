@@ -44,6 +44,7 @@ async function upload(_file, token, logger, _name = null) {
          * @type {Set<Number>}
          */
         const retryingChunks = new Set();
+        let sendingChunks = 0;
 
         let collapsed = false;
         let done = false;
@@ -205,6 +206,18 @@ async function upload(_file, token, logger, _name = null) {
         async function uploadChunk(chunkLogger, retry = false, _cnum = null) {
             chunkLogger.innerText = `chunk #${num} initializing..`;
 
+            sendingChunks += 1;
+
+            // only allow 10 chunks uploading at once to avoid timeout
+            if (sendingChunks > 10) {
+                while (true) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    if (sendingChunks <= 10) {
+                        break;
+                    }
+                }
+            }
+
             const request = new XMLHttpRequest();
 
             let cnum;
@@ -240,6 +253,8 @@ async function upload(_file, token, logger, _name = null) {
 
             request.onload = () => {
                 retryingChunks.delete(cnum);
+                sendingChunks -= 1;
+                
                 if (request.status == 201) {
                     erroredChunks.delete(cnum);
 
