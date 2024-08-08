@@ -157,7 +157,7 @@ async function upload(_file, token, logger, _name = null) {
                     }
 
                     if (msg.lastEventId != "done" && msg.lastEventId != "progress" && msg.lastEventId != "duplicate") {
-                        if (!collapsed) { toggleCollapse(); }
+                        if (collapsed) { toggleCollapse(); }
                         
                         const button = document.createElement("button");
                         button.style.marginLeft = "5px";
