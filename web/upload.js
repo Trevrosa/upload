@@ -142,7 +142,6 @@ async function upload(_file, token, logger, _name = null) {
                     mainLogger.style.textDecoration = null;
 
                     doneProcessing = true;
-                    if (!collapsed) { toggleCollapse(); }
 
                     if (msg.lastEventId == "done") {
                         mainLogger.onclick = null;
@@ -158,6 +157,8 @@ async function upload(_file, token, logger, _name = null) {
                     }
 
                     if (msg.lastEventId != "done" && msg.lastEventId != "progress" && msg.lastEventId != "duplicate") {
+                        if (!collapsed) { toggleCollapse(); }
+                        
                         const button = document.createElement("button");
                         button.style.marginLeft = "5px";
                         button.innerText = "retry?";
