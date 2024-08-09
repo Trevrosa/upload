@@ -161,6 +161,13 @@ async function upload(_file, token, logger, _name = null) {
                         mainLogger.innerHTML = `uploaded! see <a href="${msg.data}">${msg.data}</a>`;
                     } else if (msg.lastEventId == "progress") {
                         mainLogger.innerHTML = `${oldStatus}: almost done.. (${msg.data}/${totalChunks})` + collapseMsg;
+                    } else if (msg.lastEventId == "duplicate") {
+                        mainLogger.onclick = null;
+                        mainLogger.style.cursor = null;
+
+                        const link = `https://uploads.trevrosa.dev/${file.name}`;
+                        const location = `see <a href="${link}">${link}</a>`;
+                        mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">${msg.data}, ${location}</div>`;
                     } else {
                         mainLogger.style.userSelect = "";
                         mainLogger.innerHTML = `${oldStatus}\n\n<div style="color: #cc0000; display: inline-block;">${msg.data}</div>`;
@@ -403,16 +410,10 @@ document.getElementById("file").onchange = () => {
     }
 };
 
-document.getElementById("token").onload = () => {
-    const token = localStorage.getItem("token");
-    if (token) {
-        document.getElementById("token").value = token;
-    }
-};
-
-document.getElementById("token").onchange = () => {
-    localStorage.setItem("token", document.getElementById("token").value);
-};
+const token = localStorage.getItem("token");
+if (token) {
+    document.getElementById("token").value = token;
+}
 
 button.onclick = async () => {
     if (uploading) {
@@ -438,6 +439,8 @@ button.onclick = async () => {
         defaultLogger.children[0].innerHTML = "u dont put password";
         return;
     }
+
+    localStorage.setItem("token", token);
 
     const statuses = document.getElementById("statuses");
 
