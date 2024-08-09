@@ -17,6 +17,13 @@ use std::{
     sync::LazyLock,
 };
 
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 static UPLOAD_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     Path::new(include_str!("../upload_path"))
         .canonicalize()
