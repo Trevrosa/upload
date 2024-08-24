@@ -25,8 +25,8 @@ async function upload(_file, token, logger, _name = null) {
     }
 
     const file = new File([_file], name, { type: _file.type });
-
     const maxSize = 5_000_000;
+    const parallelism = document.getElementById("parallel").value;
 
     // if file size >5 MB, split up requests
     if (file.size > maxSize) {
@@ -216,10 +216,10 @@ async function upload(_file, token, logger, _name = null) {
             sendingChunks += 1;
 
             // only allow 10 chunks uploading at once to avoid timeout
-            if (sendingChunks > 10) {
+            if (sendingChunks > parallelism) {
                 while (true) {
                     await new Promise(r => setTimeout(r, 2000));
-                    if (sendingChunks <= 10) {
+                    if (sendingChunks <= parallelism) {
                         break;
                     }
                 }
