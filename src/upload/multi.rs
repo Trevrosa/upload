@@ -29,13 +29,6 @@ async fn upload_multi(
     num: u32,
     chunk: FallibleFormChunk<'_>,
 ) -> Response {
-    if id.ends_with(")-") {
-        return (
-            Status::BadRequest,
-            Cow::Borrowed("id may not end with `)-`"),
-        );
-    }
-
     let mut chunk = match chunk {
         Ok(input) => input,
         Err(errs) => {
@@ -46,7 +39,7 @@ async fn upload_multi(
         }
     };
 
-    let path = format!("({id})-{num}");
+    let path = format!("{num}-{id}");
     let path = temp_dir().join(path);
 
     let file = &mut chunk.file;

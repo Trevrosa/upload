@@ -16,11 +16,9 @@ the `id` is meant to be unique for each file upload
 
 this is POST, not PUT, to allow retries
 
-*the id **must not** end with `)-`*
-
 *the request body should be specified the same as in the normal upload.*
 
-*additionally, the form sent must include a `hash` field with a [XXH32](https://github.com/Cyan4973/xxHash) hash of the file being uploaded.*
+*additionally, the form sent must include a `hash` field with a [XXH32](https://github.com/Cyan4973/xxHash) hash of the uploaded chunk.*
 
 *the request must have a header named `token` with the set token*
 

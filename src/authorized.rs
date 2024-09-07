@@ -16,7 +16,6 @@ impl<'r> FromRequest<'r> for Authorized {
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = req.headers().get_one("token");
 
-        #[allow(clippy::option_if_let_else)]
         match token {
             Some(token) => {
                 if token == TOKEN {

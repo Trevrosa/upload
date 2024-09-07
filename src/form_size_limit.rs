@@ -16,7 +16,6 @@ impl<'r> FromRequest<'r> for FormSizeLimit {
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let size = req.headers().get_one("content-length");
 
-        #[allow(clippy::option_if_let_else)]
         match size {
             Some(size) => {
                 let Ok(size) = size.parse::<u64>() else {

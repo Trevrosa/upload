@@ -18,24 +18,28 @@ use crate::{UPLOAD_DIR, UPLOAD_URL};
 ///
 /// # Panics
 ///
-/// will panic if the path names of `a` or `b` do not fit the template `({id})-{num}`
-fn order_chunks(a: &Path, b: &Path) -> Ordering {
-    let a: u32 = a
+/// will panic if the path names given do not start with a number separated with a '-'.
+fn order_chunks(c1: &Path, c2: &Path) -> Ordering {
+    let c1: u32 = c1
+        .file_name()
+        .unwrap()
         .to_string_lossy()
-        .split(")-")
-        .last()
+        .split('-')
+        .next()
         .unwrap()
         .parse()
         .unwrap();
-    let b: u32 = b
+    let c2: u32 = c2
+        .file_name()
+        .unwrap()
         .to_string_lossy()
-        .split(")-")
-        .last()
+        .split('-')
+        .next()
         .unwrap()
         .parse()
         .unwrap();
 
-    a.cmp(&b)
+    c1.cmp(&c2)
 }
 
 enum EventIds {
@@ -67,11 +71,10 @@ impl From<EventIds> for Cow<'static, str> {
 
 // merges separated files into `name`
 // this is get because js's `EventSource` sends get requests
-#[allow(clippy::needless_pass_by_value)]
 #[get("/done/<id>/<name>/<total>")]
 fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Event + 'a] {
     let stream = EventStream! {
-        let matcher = temp_dir().join(format!("({id}*"));
+        let matcher = temp_dir().join(format!("*{id}"));
 
         let files = spawn_blocking(move || glob(matcher.to_str().unwrap()).unwrap()).await;
         let Ok(files) = files else {
@@ -97,6 +100,10 @@ fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Ev
             return;
         }
 
+        if files.iter().any(|e| !e.to_string_lossy().contains('-')) {
+            yield Event::data("one or more chunks not saved correctly").id(ServerError);
+            return;
+        }
         files.sort_by(|a, b| order_chunks(a, b));
 
         // `name` cannot be `..` because `/done/id/../total` would become `/done/id/total`, thus not matched by this route
