@@ -340,8 +340,9 @@ async function upload(_file, token, logger, _name = null) {
                 if (request.status == 201) {
                     defaultLogger.innerHTML = `uploaded! see <a href="${response}">${response}</a>`;
                 } else if (request.status == 409) {
-                    const url = `https://uploads.trevrosa.dev/${file.name}`;
-                    defaultLogger.innerHTML = `\n\n<div style='color: #cc0000;'>cannot upload because duplicate, see ${url}</div>`;
+                    const realUrl = `https://uploads.trevrosa.dev/${file.name}`;
+                    const url = `<a href="${realUrl}">${realUrl}</a>`;
+                    defaultLogger.innerHTML += `\n\n<div style='color: #cc0000;'>cannot upload because duplicate, see ${url}</div>`;
                 } else if (request.status == 502) {
                     defaultLogger.innerHTML += "\n\n<div style='color: #cc0000; display: inline-block;'>server offline</div>";
                 } else if (request.status == 520) {
