@@ -106,8 +106,9 @@ fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Ev
         }
         files.sort_by(|a, b| order_chunks(a, b));
 
-        // `name` cannot be `..` because `/done/id/../total` would become `/done/id/total`, thus not matched by this route
-        // `name` also cannot include extra directories; `/done/id/etc/etc/total` would not be matched by this route
+        // safety:
+        // `name` cannot be `..` because the url `/done/id/../total` would resolve to `/done/id/total`, thus not matched by this route
+        // `name` also cannot include extra directories; the url `/done/id/etc/etc/total` would not be matched by this route
         let final_path = UPLOAD_DIR.join(name);
         let final_file = fs::File::options()
             .write(true)
