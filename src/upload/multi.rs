@@ -1,11 +1,13 @@
 use std::borrow::Cow;
 use std::env::temp_dir;
+use std::io::SeekFrom;
 
 use rocket::fairing::AdHoc;
 use rocket::fs::TempFile;
 use rocket::http::Status;
-use rocket::tokio::fs;
-use rocket::{post, routes, FromForm};
+use rocket::tokio::io::{AsyncReadExt, AsyncSeekExt};
+use rocket::tokio::{fs, io};
+use rocket::{FromForm, post, routes};
 use xxhash_rust::xxh32::xxh32;
 
 use crate::authorized::Authorized;
@@ -26,7 +28,7 @@ async fn upload_multi(
     _size: FormSizeLimit, // check the size of upload
     _authed: Authorized,  // check the if request is authorized
     id: &'_ str,
-    num: u32,
+    num: u64,
     chunk: FallibleFormChunk<'_>,
 ) -> Response {
     let mut chunk = match chunk {
@@ -39,32 +41,55 @@ async fn upload_multi(
         }
     };
 
-    let path = format!("{num}-{id}");
-    let path = temp_dir().join(path);
+    let hash = chunk.hash;
+    let upload = &mut chunk.file;
 
-    let file = &mut chunk.file;
-    let save_result = file.persist_to(&path).await;
+    match fs::File::create(temp_dir().join(id)).await {
+        Ok(mut file) => {
+            let Ok(mut read) = upload.open().await else {
+                return (
+                    Status::InternalServerError,
+                    Cow::Borrowed("failed to read chunk"),
+                );
+            };
 
-    if let Err(err) = save_result {
-        let err = format!("failed to save: {err:#?}");
-        eprintln!("{err}");
+            let mut bytes = Vec::new();
+            read.read_to_end(&mut bytes).await.unwrap();
 
-        (Status::InternalServerError, Cow::Owned(err))
-    } else {
-        let Ok(file) = fs::read(path).await else {
-            return (
-                Status::InternalServerError,
-                Cow::Borrowed("failed to read chunk"),
-            );
-        };
-        let hash = xxh32(&file, 0);
+            if xxh32(&bytes, 0) != hash {
+                println!("chunk hash mismatch (id: {id}, num: {num})");
+                return (Status::BadRequest, Cow::Borrowed("hash mismatch, retry"));
+            }
 
-        if hash == chunk.hash {
-            println!("finish multi upload (id: {id}, num: {num}), hash ok");
+            if let Err(err) = file.seek(SeekFrom::Start(num)).await {
+                eprintln!("could not seek file: {err}");
+                return (Status::InternalServerError, Cow::Borrowed("io error"));
+            };
+
+            if let Err(err) = io::copy(&mut read, &mut file).await {
+                eprintln!("could not copy bytes to tempfile: {err}");
+                return (
+                    Status::InternalServerError,
+                    Cow::Borrowed("could not write file"),
+                );
+            }
+
+            if let Some(upload) = upload.path()
+                && let Err(err) = fs::remove_file(upload).await
+            {
+                eprintln!("failed to cleanup uploaded file: {err}");
+            }
+
+            println!("chunk received (id: {id}, num: {num})");
             (Status::Created, Cow::Borrowed("done"))
-        } else {
-            println!("finish multi upload (id: {id}, num: {num}), hash bad");
-            (Status::BadRequest, Cow::Borrowed("hash mismatch, retry"))
+        }
+        Err(err) => {
+            eprintln!("could not open file: {err}");
+
+            (
+                Status::InternalServerError,
+                Cow::Borrowed("could not open file"),
+            )
         }
     }
 }
