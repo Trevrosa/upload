@@ -16,6 +16,7 @@ use crate::{FallibleForm, Response};
 
 #[derive(FromForm)]
 struct Chunk<'a> {
+    num: u64,
     file: TempFile<'a>,
     hash: u32,
 }
@@ -23,12 +24,12 @@ struct Chunk<'a> {
 type FallibleFormChunk<'a> = FallibleForm<'a, Chunk<'a>>;
 
 // `id` is the unique id used for an upload split to multiple requests
-#[post("/multi/<id>/<num>", data = "<chunk>")]
+#[post("/multi/<id>/<total>", data = "<chunk>")]
 async fn upload_multi(
     _size: FormSizeLimit, // check the size of upload
     _authed: Authorized,  // check the if request is authorized
     id: &'_ str,
-    num: u64,
+    total: u64,
     chunk: FallibleFormChunk<'_>,
 ) -> Response {
     let mut chunk = match chunk {
@@ -41,10 +42,15 @@ async fn upload_multi(
         }
     };
 
+    let num = chunk.num;
     let hash = chunk.hash;
     let upload = &mut chunk.file;
 
-    match fs::File::create(temp_dir().join(id)).await {
+    let file = fs::File::options()
+        .write(true)
+        .open(temp_dir().join(id))
+        .await;
+    match file {
         Ok(mut file) => {
             let Ok(mut read) = upload.open().await else {
                 return (

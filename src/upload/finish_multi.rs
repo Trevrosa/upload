@@ -7,72 +7,60 @@ use std::time::Duration;
 
 use glob::glob;
 use rocket::fairing::AdHoc;
+use rocket::http::Status;
 use rocket::response::stream::{Event, EventStream};
 use rocket::tokio::task::spawn_blocking;
 use rocket::tokio::{fs, io};
 use rocket::{get, routes};
 
-use crate::{UPLOAD_DIR, UPLOAD_URL};
-
-/// order two file names with template `({id})-{num}` by `num`
-///
-/// # Panics
-///
-/// will panic if the path names given do not start with a number separated with a '-'.
-fn order_chunks(c1: &Path, c2: &Path) -> Ordering {
-    let c1: u32 = c1
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .split('-')
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let c2: u32 = c2
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .split('-')
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-
-    c1.cmp(&c2)
-}
-
-enum EventIds {
-    ServerError,
-    IdNotFound,
-    MissingChunks,
-    Progress,
-    Duplicate,
-    Done,
-}
-
-use EventIds::{Done, Duplicate, IdNotFound, MissingChunks, Progress, ServerError};
-
-// for use in Event::id
-impl From<EventIds> for Cow<'static, str> {
-    fn from(val: EventIds) -> Self {
-        let id = match val {
-            ServerError => "servererror",
-            IdNotFound => "idnotfound",
-            MissingChunks => "missingchunks",
-            Progress => "progress",
-            Duplicate => "duplicate",
-            Done => "done",
-        };
-
-        Cow::Borrowed(id)
-    }
-}
+use crate::{Response, UPLOAD_DIR, UPLOAD_URL};
 
 // merges separated files into `name`
-// this is get because js's `EventSource` sends get requests
-#[get("/done/<id>/<name>/<total>")]
-fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Event + 'a] {
+#[get("/done/<id>/<name>/<total_size>")]
+async fn finish_multi<'a>(id: &'a str, name: &'a str, total_size: u64) -> Response {
+    let path = temp_dir().join(id);
+
+    let meta = {
+        let Ok(file) = fs::File::open(&path).await else {
+            return (Status::NotFound, Cow::Borrowed("no file with provided id"))
+        };
+        
+        let Ok(meta) = file.metadata().await else {
+            return (Status::InternalServerError, Cow::Borrowed("could not read file with provided id"))
+        };
+
+        meta
+    };
+
+    if meta.len() != total_size {
+        return (Status::BadRequest, Cow::Borrowed("size mismatch"))
+    }
+
+    // safety:
+    // `name` cannot be `..` because the url `/done/id/../total` would resolve to `/done/id/total`, thus not matched by this route
+    // `name` also cannot include extra directories; the url `/done/id/etc/etc/total` would not be matched by this route
+    let final_path = UPLOAD_DIR.join(name);
+
+    if fs::try_exists(&final_path).await.is_ok_and(|exists| exists) {
+        println!("duplicate file {final_path:?}, deleting temp file");
+        if let Err(err) = fs::remove_file(&path).await {
+            
+        }
+        return (Status::Conflict, Cow::Borrowed("target file already exists"))        
+    }
+
+    if let Err(err) = fs::rename(from, to)
+
+    let mut final_file = match final_file {
+        Ok(file) => file,
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+
+        }
+        Err(err) => {
+            
+        }
+    };
+
     let stream = EventStream! {
         let matcher = temp_dir().join(format!("*{id}"));
 
@@ -106,37 +94,7 @@ fn finish_multi<'a>(id: &'a str, name: &'a str, total: usize) -> EventStream![Ev
         }
         files.sort_by(|a, b| order_chunks(a, b));
 
-        // safety:
-        // `name` cannot be `..` because the url `/done/id/../total` would resolve to `/done/id/total`, thus not matched by this route
-        // `name` also cannot include extra directories; the url `/done/id/etc/etc/total` would not be matched by this route
-        let final_path = UPLOAD_DIR.join(name);
-        let final_file = fs::File::options()
-            .write(true)
-            .create_new(true)
-            .open(&final_path)
-            .await;
-
-        let mut final_file = match final_file {
-            Ok(file) => file,
-            Err(err) if err.kind() == ErrorKind::AlreadyExists => {
-                println!("duplicate file {final_path:?} skipped combination, deleting temp files");
-                for file in files {
-                    if fs::remove_file(&file).await.is_err() {
-                        eprintln!("failed to delete temp file {file:?}");
-                    };
-                }
-
-                yield Event::data("cannot upload because duplicate").id(Duplicate);
-                return;
-            }
-            Err(err) => {
-                let err = format!("error occured while creating file {err}");
-                eprintln!("{err}");
-
-                yield Event::data(err).id(ServerError);
-                return;
-            }
-        };
+        
 
         for (n, path) in files.iter().enumerate() {
             let Ok(mut file) = fs::File::open(&path).await else {
